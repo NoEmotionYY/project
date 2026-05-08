@@ -1,0 +1,379 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CYPHER 检测配置</title>
+  <style>
+    :root { --bg:#0b1120; --panel:#111827; --soft:#172033; --line:#2c3852; --text:#e5e7eb; --muted:#94a3b8; --accent:#38bdf8; --ok:#22c55e; --danger:#ef4444; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font-family:"Segoe UI","Microsoft YaHei",Arial,sans-serif; }
+    header { height:60px; display:flex; justify-content:space-between; align-items:center; padding:0 24px; background:rgba(15,23,42,.92); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:2; }
+    .brand { font-weight:700; } .brand span { color:var(--accent); }
+    nav { display:flex; gap:10px; flex-wrap:wrap; }
+    nav a, button { border:1px solid var(--line); background:var(--soft); color:var(--text); padding:8px 12px; border-radius:7px; text-decoration:none; cursor:pointer; font:inherit; }
+    nav a:hover, button:hover { border-color:var(--accent); }
+    main { display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:18px; padding:18px; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:18px; }
+    h1,h2,h3 { margin:0; } h1 { font-size:22px; } h2 { font-size:18px; margin-bottom:14px; } h3 { font-size:15px; margin:14px 0 10px; }
+    .section { margin-top:18px; }
+    .grid { display:grid; gap:12px; } .grid.two { grid-template-columns:repeat(2,minmax(0,1fr)); } .grid.three { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    label { display:grid; gap:6px; color:var(--muted); font-size:13px; }
+    input, select { width:100%; background:#0f172a; color:var(--text); border:1px solid var(--line); border-radius:7px; padding:9px 10px; outline:none; }
+    input:focus, select:focus { border-color:var(--accent); } input[type="checkbox"] { width:auto; }
+    .actions { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; flex-wrap:wrap; }
+    .primary { background:#0ea5e9; color:#00111d; border-color:#0ea5e9; font-weight:700; }
+    .danger { border-color:#7f1d1d; color:#fecaca; }
+    .status { min-height:22px; margin-top:12px; color:var(--muted); } .status.ok { color:var(--ok); } .status.error { color:var(--danger); }
+    .hint { color:var(--muted); font-size:13px; line-height:1.55; }
+    .list { display:grid; gap:10px; }
+    .item { border:1px solid var(--line); border-radius:7px; padding:10px; background:rgba(255,255,255,.02); display:grid; gap:8px; }
+    .item-row { display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap; }
+    .meta { color:var(--muted); font-size:12px; word-break:break-all; }
+    .badge { display:inline-flex; padding:2px 8px; border:1px solid var(--line); border-radius:999px; color:var(--muted); font-size:12px; }
+    @media (max-width:1000px) { main { grid-template-columns:1fr; } .grid.two,.grid.three { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span>CYPHER</span> 检测配置</div>
+    <nav>
+      <a href="/dashboard">主界面</a>
+      <a href="/events">事件中心</a>
+      <a href="/recordings">录像</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h1>YOLO 检测治理配置</h1>
+      <p class="hint">本页只保存阈值、连续确认、冷却时间、模型 profile、Qwen 低频复核标记和分析间隔；不会接收 API Key、任意模型路径、快照目录或数据库路径。</p>
+
+      <form id="config-form">
+        <div class="section">
+          <h2>检测阈值</h2>
+          <div class="grid three">
+            <label>helmet 安全帽 <input id="threshold-helmet" type="number" min="0" max="1" step="0.01"></label>
+            <label>vest 反光衣 <input id="threshold-vest" type="number" min="0" max="1" step="0.01"></label>
+            <label>no-helmet 未戴安全帽 <input id="threshold-no-helmet" type="number" min="0" max="1" step="0.01"></label>
+            <label>no-vest 未穿反光衣 <input id="threshold-no-vest" type="number" min="0" max="1" step="0.01"></label>
+            <label>fire 火灾 <input id="threshold-fire" type="number" min="0" max="1" step="0.01"></label>
+            <label>smoke 烟雾 <input id="threshold-smoke" type="number" min="0" max="1" step="0.01"></label>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>连续确认帧数</h2>
+          <div class="grid two">
+            <label>no-helmet <input id="confirm-no-helmet" type="number" min="1" max="20" step="1"></label>
+            <label>no-vest <input id="confirm-no-vest" type="number" min="1" max="20" step="1"></label>
+            <label>fire <input id="confirm-fire" type="number" min="1" max="20" step="1"></label>
+            <label>smoke <input id="confirm-smoke" type="number" min="1" max="20" step="1"></label>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>告警冷却秒数</h2>
+          <div class="grid two">
+            <label>no-helmet <input id="cooldown-no-helmet" type="number" min="0" max="3600" step="1"></label>
+            <label>no-vest <input id="cooldown-no-vest" type="number" min="0" max="3600" step="1"></label>
+            <label>fire <input id="cooldown-fire" type="number" min="0" max="3600" step="1"></label>
+            <label>smoke <input id="cooldown-smoke" type="number" min="0" max="3600" step="1"></label>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>模型与运行</h2>
+          <div class="grid three">
+            <label>模型 profile
+              <select id="model-profile">
+                <option value="default">default</option>
+                <option value="ppe">ppe</option>
+                <option value="fire">fire</option>
+              </select>
+            </label>
+            <label>分析间隔 ms <input id="analysis-interval" type="number" min="500" max="10000" step="100"></label>
+            <label style="align-content:end;"><span><input id="qwen-review" type="checkbox"> 允许 Qwen 低频复核标记</span></label>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="button" id="reload-config-btn">重新读取</button>
+          <button type="submit" class="primary">保存检测配置</button>
+        </div>
+        <div id="config-status" class="status"></div>
+      </form>
+
+      <div class="section">
+        <h2>摄像头源配置</h2>
+        <p class="hint">支持 RTSP/IP/URL 摄像头源。配置保存到固定的 data/cameras.json；页面只调用 CYPHER 摄像头 API，不调用旧 Vigil 视频流或旧相机配置接口。</p>
+        <form id="camera-form">
+          <div class="grid three">
+            <label>名称 label <input id="camera-label" maxlength="80" placeholder="北门摄像头"></label>
+            <label>来源类型
+              <select id="camera-source-type">
+                <option value="rtsp">RTSP URL</option>
+                <option value="ip">IP 拼接 RTSP</option>
+                <option value="url">URL</option>
+              </select>
+            </label>
+            <label>RTSP / URL <input id="camera-url" placeholder="rtsp://user:pass@192.168.1.10:554/stream"></label>
+            <label>IP <input id="camera-ip" placeholder="192.168.1.10"></label>
+            <label>端口 <input id="camera-port" type="number" min="1" max="65535" value="554"></label>
+            <label>路径 <input id="camera-path" placeholder="stream1"></label>
+            <label>用户名 <input id="camera-username" autocomplete="off"></label>
+            <label>密码 <input id="camera-password" type="password" autocomplete="new-password"></label>
+            <label style="align-content:end;"><span><input id="camera-auto-start" type="checkbox"> 保存后立即启动测试</span></label>
+          </div>
+          <div class="actions">
+            <button type="button" id="camera-reset-btn">清空表单</button>
+            <button type="submit" class="primary" id="camera-save-btn">新增摄像头</button>
+          </div>
+          <div id="camera-status" class="status"></div>
+        </form>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <h2>当前系统状态</h2>
+      <div class="item">
+        <div>摄像头：<strong id="camera-summary">读取中</strong></div>
+        <div>启用技能：<strong id="skill-summary">读取中</strong></div>
+        <div>模型 profile：<strong id="profile-summary">-</strong></div>
+      </div>
+      <h3>摄像头列表</h3>
+      <div id="camera-list" class="list"></div>
+      <h3>技能列表</h3>
+      <div id="skill-list" class="list"></div>
+    </aside>
+  </main>
+
+  <script>
+    const labels = ['helmet', 'vest', 'no-helmet', 'no-vest', 'fire', 'smoke'];
+    const alertLabels = ['no-helmet', 'no-vest', 'fire', 'smoke'];
+    let editingCameraId = '';
+
+    function setStatus(id, message, tone = '') {
+      const el = document.getElementById(id);
+      el.textContent = message;
+      el.className = 'status ' + tone;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+
+    function numberValue(id) {
+      const value = Number(document.getElementById(id).value);
+      return Number.isFinite(value) ? value : null;
+    }
+
+    function setNumber(id, value) { document.getElementById(id).value = value ?? ''; }
+
+    function fillConfig(config) {
+      for (const key of labels) setNumber('threshold-' + key, config.thresholds?.[key]);
+      for (const key of alertLabels) setNumber('confirm-' + key, config.confirmFrames?.[key]);
+      for (const key of alertLabels) setNumber('cooldown-' + key, config.cooldowns?.[key]);
+      document.getElementById('model-profile').value = config.modelProfile || 'default';
+      document.getElementById('analysis-interval').value = config.analysisIntervalMs || 1000;
+      document.getElementById('qwen-review').checked = Boolean(config.qwenReview);
+      const profile = config.modelProfiles?.[config.modelProfile || 'default'];
+      document.getElementById('profile-summary').textContent = profile ? `${profile.label} (${profile.env})` : '-';
+    }
+
+    function collectConfig() {
+      const thresholds = {};
+      for (const key of labels) thresholds[key] = numberValue('threshold-' + key);
+      const confirmFrames = {};
+      for (const key of alertLabels) confirmFrames[key] = numberValue('confirm-' + key);
+      const cooldowns = {};
+      for (const key of alertLabels) cooldowns[key] = numberValue('cooldown-' + key);
+      return {
+        thresholds,
+        confirmFrames,
+        cooldowns,
+        modelProfile: document.getElementById('model-profile').value,
+        qwenReview: document.getElementById('qwen-review').checked,
+        analysisIntervalMs: numberValue('analysis-interval')
+      };
+    }
+
+    async function loadConfig() {
+      try {
+        const response = await fetch('/api/detection/config', { cache: 'no-store' });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || '读取失败');
+        fillConfig(data.config);
+        setStatus('config-status', '检测配置已读取', 'ok');
+      } catch (error) {
+        setStatus('config-status', '读取失败: ' + error.message, 'error');
+      }
+    }
+
+    async function saveConfig(event) {
+      event.preventDefault();
+      try {
+        const response = await fetch('/api/detection/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(collectConfig())
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || '保存失败');
+        fillConfig(data.config);
+        setStatus('config-status', '检测配置已保存，下一轮分析会使用新配置', 'ok');
+      } catch (error) {
+        setStatus('config-status', '保存失败: ' + error.message, 'error');
+      }
+    }
+
+    function buildCameraUrl() {
+      const mode = document.getElementById('camera-source-type').value;
+      const direct = document.getElementById('camera-url').value.trim();
+      if (mode !== 'ip') return direct;
+      const ip = document.getElementById('camera-ip').value.trim();
+      const port = document.getElementById('camera-port').value.trim() || '554';
+      const path = document.getElementById('camera-path').value.trim().replace(/^\/+/, '');
+      const user = encodeURIComponent(document.getElementById('camera-username').value.trim());
+      const pass = encodeURIComponent(document.getElementById('camera-password').value);
+      const auth = user ? user + (pass ? ':' + pass : '') + '@' : '';
+      return 'rtsp://' + auth + ip + ':' + port + '/' + path;
+    }
+
+    function resetCameraForm() {
+      editingCameraId = '';
+      document.getElementById('camera-form').reset();
+      document.getElementById('camera-port').value = '554';
+      document.getElementById('camera-save-btn').textContent = '新增摄像头';
+      setStatus('camera-status', '');
+    }
+
+    async function saveCamera(event) {
+      event.preventDefault();
+      const payload = {
+        label: document.getElementById('camera-label').value.trim(),
+        sourceType: document.getElementById('camera-source-type').value,
+        url: buildCameraUrl(),
+        autoStart: document.getElementById('camera-auto-start').checked
+      };
+      try {
+        const endpoint = editingCameraId ? '/api/cameras/' + encodeURIComponent(editingCameraId) : '/api/cameras';
+        const response = await fetch(endpoint, {
+          method: editingCameraId ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok || data.success === false) throw new Error(data.error || '保存失败');
+        setStatus('camera-status', editingCameraId ? '摄像头已更新' : '摄像头已新增', 'ok');
+        resetCameraForm();
+        await loadCameras();
+      } catch (error) {
+        setStatus('camera-status', '保存失败: ' + error.message, 'error');
+      }
+    }
+
+    async function cameraAction(action, id) {
+      const safeId = encodeURIComponent(id);
+      let endpoint = '/api/cameras/' + safeId;
+      let method = 'POST';
+      if (action === 'start') endpoint += '/start';
+      if (action === 'stop') endpoint += '/stop';
+      if (action === 'active') endpoint = '/api/cameras/active';
+      if (action === 'delete') method = 'DELETE';
+      const options = { method, headers: { 'Content-Type': 'application/json' } };
+      if (action === 'active') options.body = JSON.stringify({ id });
+      if (action === 'delete' && !confirm('确认删除摄像头 ' + id + '？')) return;
+      try {
+        const response = await fetch(endpoint, options);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.success === false) throw new Error(data.error || '操作失败');
+        await loadCameras();
+      } catch (error) {
+        setStatus('camera-status', '操作失败: ' + error.message, 'error');
+      }
+    }
+
+    function editCamera(camera) {
+      editingCameraId = camera.id;
+      document.getElementById('camera-label').value = camera.label || camera.id;
+      document.getElementById('camera-source-type').value = camera.sourceType || 'rtsp';
+      document.getElementById('camera-url').value = camera.url || '';
+      document.getElementById('camera-auto-start').checked = false;
+      document.getElementById('camera-save-btn').textContent = '保存摄像头';
+      setStatus('camera-status', '正在编辑 ' + camera.id);
+    }
+
+    async function loadCameras() {
+      try {
+        const response = await fetch('/api/cameras', { cache: 'no-store' });
+        const data = await response.json();
+        const cameras = data.cameras || [];
+        document.getElementById('camera-summary').textContent = cameras.length + ' 个，active=' + (data.active || '-');
+        const list = document.getElementById('camera-list');
+        if (!cameras.length) {
+          list.innerHTML = '<div class="item meta">暂无摄像头配置。可从左侧新增 RTSP/IP/URL 源。</div>';
+          return;
+        }
+        list.innerHTML = cameras.map(camera => `
+          <div class="item" data-camera-id="${escapeHtml(camera.id)}">
+            <div class="item-row"><strong>${escapeHtml(camera.label || camera.id)}</strong><span class="badge">${escapeHtml(camera.status || '-')}</span></div>
+            <div class="meta">id: ${escapeHtml(camera.id)} | type: ${escapeHtml(camera.type || '-')} | source: ${escapeHtml(camera.sourceType || '-')}</div>
+            <div class="meta">frame: ${camera.hasFrame ? '有帧' : '无帧'} | count: ${Number(camera.frameCount || 0)}</div>
+            <div class="meta">endpoint: /api/cameras/${encodeURIComponent(camera.id)}/frame</div>
+            ${camera.url ? `<div class="meta">url: ${escapeHtml(camera.url)}${camera.hasCredentials ? '（密码已遮蔽）' : ''}</div>` : ''}
+            ${camera.error ? `<div class="meta">error: ${escapeHtml(camera.error)}</div>` : ''}
+            <div class="actions" style="justify-content:flex-start;margin-top:4px;">
+              <button type="button" data-action="active">设为 active</button>
+              <button type="button" data-action="start">启动测试</button>
+              <button type="button" data-action="stop">停止</button>
+              <button type="button" data-action="edit">编辑</button>
+              <button type="button" class="danger" data-action="delete">删除</button>
+            </div>
+          </div>`).join('');
+        list.querySelectorAll('.item').forEach(item => {
+          const id = item.dataset.cameraId;
+          const camera = cameras.find(entry => entry.id === id);
+          item.querySelectorAll('button').forEach(button => {
+            button.addEventListener('click', () => {
+              const action = button.dataset.action;
+              if (action === 'edit') return editCamera(camera);
+              cameraAction(action, id);
+            });
+          });
+        });
+      } catch (error) {
+        document.getElementById('camera-summary').textContent = '读取失败';
+        document.getElementById('camera-list').innerHTML = '<div class="item meta">摄像头读取失败：' + escapeHtml(error.message) + '</div>';
+      }
+    }
+
+    async function loadSkills() {
+      try {
+        const response = await fetch('/api/skills', { cache: 'no-store' });
+        const data = await response.json();
+        const skills = data.skills || [];
+        const enabled = skills.filter(skill => skill.enabled);
+        document.getElementById('skill-summary').textContent = enabled.length + ' / ' + skills.length;
+        document.getElementById('skill-list').innerHTML = skills.map(skill => `
+          <div class="item">
+            <div class="item-row"><strong>${escapeHtml(skill.label || skill.id)}</strong><span class="badge">${skill.enabled ? 'enabled' : 'disabled'}</span></div>
+            <div class="meta">${escapeHtml(skill.type || '-')}: ${escapeHtml(skill.description || '')}</div>
+          </div>`).join('') || '<div class="item meta">暂无技能</div>';
+      } catch (error) {
+        document.getElementById('skill-summary').textContent = '读取失败';
+      }
+    }
+
+    document.getElementById('config-form').addEventListener('submit', saveConfig);
+    document.getElementById('reload-config-btn').addEventListener('click', loadConfig);
+    document.getElementById('camera-form').addEventListener('submit', saveCamera);
+    document.getElementById('camera-reset-btn').addEventListener('click', resetCameraForm);
+
+    loadConfig();
+    loadCameras();
+    loadSkills();
+    setInterval(loadCameras, 10000);
+  </script>
+</body>
+</html>

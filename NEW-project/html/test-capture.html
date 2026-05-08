@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>AI 桌面区域监控测试</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            background: #121212;
+            color: #f1f5f9;
+            padding: 16px;
+            min-height: 100vh;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 {
+            font-size: 1.3rem;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .toolbar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-success { background: #22c55e; color: white; }
+        .btn-success:hover { background: #16a34a; }
+        .btn-danger { background: #dc2626; color: white; }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .status {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            padding: 8px 14px;
+            background: #1e1e1e;
+            border-radius: 8px;
+            border: 1px solid #334155;
+        }
+        .main {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 16px;
+        }
+        .panel {
+            background: #1e1e1e;
+            border-radius: 12px;
+            padding: 14px;
+            border: 1px solid #334155;
+        }
+        .panel h3 {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            margin-bottom: 10px;
+        }
+        .video-wrap {
+            position: relative;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            aspect-ratio: 16/9;
+        }
+        video, canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        #overlayCanvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: auto;
+            cursor: crosshair;
+        }
+        .preview-box {
+            background: #000;
+            border-radius: 8px;
+            min-height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #555;
+            font-size: 0.85rem;
+        }
+        .preview-box img {
+            max-width: 100%;
+            max-height: 180px;
+            display: block;
+        }
+        .result-box {
+            background: #0f0f0f;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 10px;
+            min-height: 100px;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+        .result-box.alert {
+            border: 1px solid #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+        .result-box.analyzing { color: #f59e0b; }
+        .hint {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-top: 6px;
+        }
+        .interval-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .interval-row input {
+            width: 60px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid #334155;
+            background: #0f0f0f;
+            color: #f1f5f9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖥️ AI 桌面区域监控测试</h1>
+
+        <div class="toolbar">
+            <button class="btn btn-primary" id="btnSelect" onclick="selectScreen()">
+                📺 选择屏幕
+            </button>
+            <button class="btn btn-success" id="btnStart" onclick="startMonitor()" disabled>
+                ▶️ 开始监控
+            </button>
+            <button class="btn btn-danger" id="btnStop" onclick="stopMonitor()" disabled>
+                ⏹️ 停止监控
+            </button>
+            <div class="status" id="statusText">未选择屏幕</div>
+        </div>
+
+        <div class="main">
+            <!-- 左侧：屏幕画面 + 框选 -->
+            <div class="panel">
+                <h3>屏幕画面（鼠标拖拽框选监控区域）</h3>
+                <div class="video-wrap" id="videoWrap">
+                    <video id="screenVideo" autoplay playsinline muted></video>
+                    <canvas id="overlayCanvas"></canvas>
+                </div>
+                <div class="hint" id="coordsHint">请先点击"选择屏幕"</div>
+                <div class="interval-row">
+                    <label>分析间隔:</label>
+                    <input type="number" id="intervalInput" value="3" min="1" max="60"> 秒
+                </div>
+            </div>
+
+            <!-- 右侧：预览 + 结果 -->
+            <div class="panel">
+                <h3>✂️ 区域预览</h3>
+                <div class="preview-box" id="previewBox">
+                    <span>未选择区域</span>
+                </div>
+
+                <h3 style="margin-top:14px;">🧠 最新分析结果</h3>
+                <div class="result-box" id="resultBox">等待开始监控...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('screenVideo');
+        const overlay = document.getElementById('overlayCanvas');
+        const overlayCtx = overlay.getContext('2d');
+        const videoWrap = document.getElementById('videoWrap');
+        const btnSelect = document.getElementById('btnSelect');
+        const btnStart = document.getElementById('btnStart');
+        const btnStop = document.getElementById('btnStop');
+        const statusText = document.getElementById('statusText');
+        const coordsHint = document.getElementById('coordsHint');
+        const previewBox = document.getElementById('previewBox');
+        const resultBox = document.getElementById('resultBox');
+        const intervalInput = document.getElementById('intervalInput');
+
+        let stream = null;
+        let isDragging = false;
+        let startX = 0, startY = 0, endX = 0, endY = 0;
+        let selection = null; // {x, y, w, h} in video coordinates
+        let monitorTimer = null;
+        let isMonitoring = false;
+        const BACKEND_URL = '';
+
+        // ========== 选择屏幕 ==========
+        async function selectScreen() {
+            try {
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { cursor: 'always' },
+                    audio: false
+                });
+                video.srcObject = stream;
+
+                video.onloadedmetadata = () => {
+                    resizeOverlay();
+                    statusText.textContent = '屏幕已捕获，请框选监控区域';
+                    btnStart.disabled = false;
+                    coordsHint.textContent = '在画面上拖拽鼠标框选要监控的区域';
+                };
+
+                // 用户停止共享时自动清理
+                stream.getVideoTracks()[0].onended = () => {
+                    stopMonitor();
+                    resetAll();
+                };
+            } catch (e) {
+                alert('获取屏幕失败: ' + e.message);
+            }
+        }
+
+        function resizeOverlay() {
+            const rect = videoWrap.getBoundingClientRect();
+            overlay.width = rect.width;
+            overlay.height = rect.height;
+        }
+
+        window.addEventListener('resize', resizeOverlay);
+
+        // ========== 框选区域 ==========
+        overlay.addEventListener('mousedown', (e) => {
+            const rect = overlay.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+            isDragging = true;
+            selection = null;
+        });
+
+        overlay.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const rect = overlay.getBoundingClientRect();
+            endX = e.clientX - rect.left;
+            endY = e.clientY - rect.top;
+            drawOverlay();
+        });
+
+        overlay.addEventListener('mouseup', () => {
+            if (!isDragging) return;
+            isDragging = false;
+            finalizeSelection();
+        });
+
+        function drawOverlay() {
+            overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+            const x = Math.min(startX, endX);
+            const y = Math.min(startY, endY);
+            const w = Math.abs(endX - startX);
+            const h = Math.abs(endY - startY);
+            overlayCtx.strokeStyle = '#22c55e';
+            overlayCtx.lineWidth = 2;
+            overlayCtx.strokeRect(x, y, w, h);
+            overlayCtx.fillStyle = 'rgba(34, 197, 94, 0.15)';
+            overlayCtx.fillRect(x, y, w, h);
+        }
+
+        function finalizeSelection() {
+            const rect = overlay.getBoundingClientRect();
+            const x = Math.max(0, Math.min(startX, endX));
+            const y = Math.max(0, Math.min(startY, endY));
+            const w = Math.min(Math.abs(endX - startX), rect.width - x);
+            const h = Math.min(Math.abs(endY - startY), rect.height - y);
+
+            if (w < 20 || h < 20) {
+                selection = null;
+                overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+                previewBox.innerHTML = '<span>未选择区域</span>';
+                coordsHint.textContent = '区域太小，请重新框选';
+                return;
+            }
+
+            // 转换为视频原始分辨率坐标
+            const scaleX = video.videoWidth / rect.width;
+            const scaleY = video.videoHeight / rect.height;
+            selection = {
+                x: Math.round(x * scaleX),
+                y: Math.round(y * scaleY),
+                w: Math.round(w * scaleX),
+                h: Math.round(h * scaleY)
+            };
+
+            coordsHint.textContent = `监控区域: ${selection.w}x${selection.h} (视频原始分辨率)`;
+            updatePreview();
+        }
+
+        function updatePreview() {
+            if (!selection || !video.videoWidth) return;
+            const canvas = document.createElement('canvas');
+            canvas.width = selection.w;
+            canvas.height = selection.h;
+            canvas.getContext('2d').drawImage(
+                video, selection.x, selection.y, selection.w, selection.h,
+                0, 0, selection.w, selection.h
+            );
+            previewBox.innerHTML = '';
+            const img = document.createElement('img');
+            img.src = canvas.toDataURL('image/jpeg', 0.9);
+            previewBox.appendChild(img);
+        }
+
+        // ========== 开始/停止监控 ==========
+        function startMonitor() {
+            if (!selection) {
+                alert('请先框选监控区域');
+                return;
+            }
+            if (isMonitoring) return;
+
+            isMonitoring = true;
+            btnStart.disabled = true;
+            btnStop.disabled = false;
+            btnSelect.disabled = true;
+            statusText.textContent = '监控中...';
+            resultBox.textContent = '监控已启动，等待首次分析...';
+            resultBox.className = 'result-box analyzing';
+
+            const intervalSec = parseInt(intervalInput.value) || 3;
+            doAnalyze(); // 立即分析一次
+            monitorTimer = setInterval(doAnalyze, intervalSec * 1000);
+        }
+
+        function stopMonitor() {
+            isMonitoring = false;
+            if (monitorTimer) {
+                clearInterval(monitorTimer);
+                monitorTimer = null;
+            }
+            btnStart.disabled = false;
+            btnStop.disabled = true;
+            btnSelect.disabled = false;
+            statusText.textContent = '已停止';
+            resultBox.className = 'result-box';
+            resultBox.textContent += '\n[监控已停止]';
+        }
+
+        async function doAnalyze() {
+            if (!selection || !video.videoWidth) return;
+
+            try {
+                // 截取区域
+                const canvas = document.createElement('canvas');
+                canvas.width = selection.w;
+                canvas.height = selection.h;
+                canvas.getContext('2d').drawImage(
+                    video, selection.x, selection.y, selection.w, selection.h,
+                    0, 0, selection.w, selection.h
+                );
+
+                // 压缩（太大 API 慢）
+                let quality = 0.9;
+                let base64 = canvas.toDataURL('image/jpeg', quality);
+                while (base64.length > 500000 && quality > 0.3) {
+                    quality -= 0.1;
+                    base64 = canvas.toDataURL('image/jpeg', quality);
+                }
+                const imageBase64 = base64.split(',')[1];
+
+                resultBox.textContent = '正在分析当前画面...';
+                resultBox.className = 'result-box analyzing';
+
+                const resp = await fetch(BACKEND_URL + '/api/test-analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ imageBase64 })
+                });
+
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const ct = resp.headers.get('content-type') || '';
+                if (!ct.includes('application/json')) throw new Error('响应格式错误 (收到 ' + ct + ')');
+                const data = await resp.json();
+
+                const time = new Date().toLocaleTimeString('zh-CN');
+                let text = `[${time}] ${data.text}`;
+                if (data.alert && data.alert_details?.length) {
+                    text += '\n⚠️ ' + data.alert_details.join(' | ');
+                }
+                resultBox.className = 'result-box' + (data.alert ? ' alert' : '');
+                resultBox.textContent = text;
+
+                // 更新预览
+                updatePreview();
+            } catch (e) {
+                resultBox.className = 'result-box alert';
+                resultBox.textContent = '分析失败: ' + e.message;
+            }
+        }
+
+        function resetAll() {
+            stream = null;
+            video.srcObject = null;
+            selection = null;
+            overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+            previewBox.innerHTML = '<span>未选择区域</span>';
+            resultBox.textContent = '等待开始监控...';
+            resultBox.className = 'result-box';
+            btnStart.disabled = true;
+            btnStop.disabled = true;
+            btnSelect.disabled = false;
+            statusText.textContent = '未选择屏幕';
+            coordsHint.textContent = '请先点击"选择屏幕"';
+        }
+    </script>
+</body>
+</html>

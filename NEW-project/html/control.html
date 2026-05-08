@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>真視眼 CYPHER</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --primary: #3b82f6;
+            --success: #22c55e;
+            --text-main: #f1f5f9;
+            --text-sub: #94a3b8;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 40px;
+        }
+        .logo i { color: var(--primary); font-size: 2.2rem; }
+        .card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 40px 50px;
+            text-align: center;
+            min-width: 420px;
+            border: 1px solid #334155;
+        }
+        .status {
+            font-size: 1rem;
+            color: var(--text-sub);
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ef4444;
+        }
+        .status-dot.running { background: var(--success); box-shadow: 0 0 10px var(--success); }
+        .info {
+            font-size: 0.9rem;
+            color: #64748b;
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }
+        .btn {
+            padding: 14px 36px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s;
+        }
+        .btn-start {
+            background: var(--primary);
+            color: white;
+        }
+        .btn-start:hover { background: #2563eb; }
+        .btn-start:active { transform: scale(0.98); }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid white;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="logo">
+        <i class="fa-solid fa-eye"></i>
+        <span>真視眼 CYPHER</span>
+    </div>
+
+    <div class="card">
+        <div class="status" id="status">
+            <div class="status-dot" id="status-dot"></div>
+            <span id="status-text">服务未运行</span>
+        </div>
+        <div class="info" id="info">
+            点击"打开服务"启动后端与 nginx 前端部署<br>
+            服务启动后将自动进入监控页面
+        </div>
+        <button class="btn btn-start" id="btn-start" onclick="handleStart()">
+            <div class="spinner" id="spinner"></div>
+            <i class="fa-solid fa-play" id="btn-icon"></i>
+            <span id="btn-text">打开服务</span>
+        </button>
+    </div>
+
+    <script>
+        const btnStart = document.getElementById('btn-start');
+        const btnText = document.getElementById('btn-text');
+        const btnIcon = document.getElementById('btn-icon');
+        const spinner = document.getElementById('spinner');
+        const statusText = document.getElementById('status-text');
+        const statusDot = document.getElementById('status-dot');
+        const info = document.getElementById('info');
+
+        async function handleStart() {
+            btnStart.disabled = true;
+            btnIcon.style.display = 'none';
+            spinner.style.display = 'block';
+            btnText.textContent = '启动中...';
+            statusText.textContent = '正在启动服务...';
+
+            try {
+                const result = await window.electronAPI.startServices();
+                if (result.success) {
+                    statusDot.classList.add('running');
+                    statusText.textContent = '服务运行中';
+                    btnText.textContent = '已启动';
+                    info.innerHTML = `服务已启动<br>监控页面加载中...`;
+                } else {
+                    throw new Error(result.error || '启动失败');
+                }
+            } catch (e) {
+                btnStart.disabled = false;
+                btnIcon.style.display = 'inline-block';
+                spinner.style.display = 'none';
+                btnText.textContent = '打开服务';
+                statusText.textContent = '启动失败';
+                info.textContent = e.message;
+            }
+        }
+
+        // 监听服务状态推送（启动成功后会收到）
+        window.electronAPI.onServiceStatus((status) => {
+            if (status.running) {
+                statusDot.classList.add('running');
+                statusText.textContent = '服务运行中';
+            }
+        });
+    </script>
+</body>
+</html>

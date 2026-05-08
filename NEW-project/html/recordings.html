@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>录制管理 - 真視眼</title>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.85);
+            --sidebar-bg: rgba(15, 23, 42, 0.95);
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border: rgba(96, 165, 250, 0.12);
+            --primary: #3b82f6;
+            --primary-light: #60a5fa;
+            --success: #22c55e;
+            --danger: #ef4444;
+            --agent-bg: rgba(20, 28, 46, 0.95);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        header {
+            height: 56px;
+            background: var(--sidebar-bg);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            flex-shrink: 0;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            background: rgba(96, 165, 250, 0.1);
+            border: 1px solid rgba(96, 165, 250, 0.2);
+            border-radius: 6px;
+            color: var(--primary-light);
+            font-size: 13px;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .back-btn:hover { background: rgba(96, 165, 250, 0.2); }
+        header h1 {
+            font-size: 18px;
+            color: var(--primary-light);
+            font-weight: 600;
+        }
+        header h1 i { margin-right: 8px; }
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .header-actions button {
+            padding: 6px 14px;
+            background: rgba(168, 85, 247, 0.12);
+            border: 1px solid rgba(168, 85, 247, 0.25);
+            border-radius: 6px;
+            color: #c084fc;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .header-actions button:hover {
+            background: rgba(168, 85, 247, 0.22);
+        }
+        .header-actions button.active {
+            background: rgba(168, 85, 247, 0.3);
+            border-color: #c084fc;
+        }
+
+        .main-layout {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* 左侧摄像头列表 */
+        .sidebar {
+            width: 260px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+        .sidebar-header {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--primary-light);
+        }
+        .camera-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 0;
+        }
+        .camera-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: background 0.15s;
+            border-left: 3px solid transparent;
+        }
+        .camera-item:hover { background: rgba(96, 165, 250, 0.05); }
+        .camera-item.active {
+            background: rgba(96, 165, 250, 0.1);
+            border-left-color: var(--primary);
+        }
+        .cam-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 0;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .status-dot.connected { background: var(--success); }
+        .status-dot.disconnected { background: #64748b; }
+        .status-dot.connecting { background: #f59e0b; }
+        .status-dot.error { background: var(--danger); }
+        .cam-name {
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .cam-id-tag {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .rec-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+            animation: pulse 1.5s infinite;
+            flex-shrink: 0;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+            flex-shrink: 0;
+            margin-left: 8px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #334155;
+            transition: .2s;
+            border-radius: 20px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .2s;
+            border-radius: 50%;
+        }
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: var(--success);
+        }
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(16px);
+        }
+
+        /* 中间文件区 */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            min-width: 0;
+        }
+        .content-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .content-header h2 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .content-header .meta {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        .empty-files {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .empty-files i {
+            font-size: 48px;
+            margin-bottom: 12px;
+            display: block;
+            opacity: 0.5;
+        }
+        .file-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 14px;
+        }
+        .file-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px;
+            transition: transform 0.15s, border-color 0.15s;
+            cursor: pointer;
+        }
+        .file-card:hover {
+            border-color: rgba(96, 165, 250, 0.3);
+            transform: translateY(-1px);
+        }
+        .file-card.selected {
+            border-color: #a855f7;
+            box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.2);
+        }
+        .file-card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .file-icon {
+            width: 36px;
+            height: 36px;
+            background: rgba(59, 130, 246, 0.12);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary-light);
+            font-size: 16px;
+        }
+        .file-card-title {
+            font-size: 13px;
+            font-weight: 500;
+            word-break: break-all;
+        }
+        .file-card-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        .file-card-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 10px;
+        }
+        .btn-sm {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            text-decoration: none;
+        }
+        .btn-play {
+            background: rgba(59, 130, 246, 0.12);
+            color: var(--primary-light);
+        }
+        .btn-play:hover { background: rgba(59, 130, 246, 0.25); }
+        .btn-download {
+            background: rgba(34, 197, 94, 0.12);
+            color: var(--success);
+        }
+        .btn-download:hover { background: rgba(34, 197, 94, 0.25); }
+        .btn-delete {
+            background: rgba(239, 68, 68, 0.12);
+            color: var(--danger);
+        }
+        .btn-delete:hover { background: rgba(239, 68, 68, 0.25); }
+        .btn-agent {
+            background: rgba(168, 85, 247, 0.12);
+            color: #c084fc;
+        }
+        .btn-agent:hover { background: rgba(168, 85, 247, 0.25); }
+
+        /* 右侧 Agent 面板 */
+        .agent-panel {
+            width: 340px;
+            background: var(--agent-bg);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            transition: margin-right 0.3s;
+        }
+        .agent-panel.collapsed {
+            margin-right: -340px;
+        }
+        .agent-header {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: #c084fc;
+        }
+        .agent-header i { margin-right: 6px; }
+        .agent-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .agent-msg {
+            max-width: 90%;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.6;
+            word-break: break-word;
+        }
+        .agent-msg.user {
+            align-self: flex-end;
+            background: rgba(59, 130, 246, 0.2);
+            border-bottom-right-radius: 4px;
+        }
+        .agent-msg.bot {
+            align-self: flex-start;
+            background: rgba(168, 85, 247, 0.12);
+            border-bottom-left-radius: 4px;
+            border: 1px solid rgba(168, 85, 247, 0.15);
+        }
+        .agent-msg .msg-time {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        .agent-input-area {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .agent-selected-file {
+            font-size: 12px;
+            color: #c084fc;
+            padding: 6px 10px;
+            background: rgba(168, 85, 247, 0.08);
+            border-radius: 6px;
+            display: none;
+        }
+        .agent-selected-file.visible { display: block; }
+        .agent-input-row {
+            display: flex;
+            gap: 8px;
+        }
+        .agent-input {
+            flex: 1;
+            padding: 8px 12px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 13px;
+            outline: none;
+        }
+        .agent-input:focus {
+            border-color: rgba(168, 85, 247, 0.4);
+        }
+        .agent-send {
+            padding: 8px 14px;
+            background: rgba(168, 85, 247, 0.2);
+            border: 1px solid rgba(168, 85, 247, 0.3);
+            border-radius: 8px;
+            color: #c084fc;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .agent-send:hover {
+            background: rgba(168, 85, 247, 0.3);
+        }
+        .agent-send:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .agent-placeholder {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 40px 20px;
+            font-size: 13px;
+        }
+        .agent-placeholder i {
+            font-size: 32px;
+            margin-bottom: 10px;
+            display: block;
+            color: rgba(168, 85, 247, 0.3);
+        }
+
+        /* 视频弹窗 */
+        .video-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .video-modal.active { display: flex; }
+        .video-modal video {
+            max-width: 90%;
+            max-height: 85vh;
+            border-radius: 12px;
+        }
+        .video-modal .close-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.15);
+            border: none;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            font-size: 18px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .video-modal .close-btn:hover { background: rgba(255,255,255,0.3); }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <a href="https://127.0.0.1:8443/dashboard" id="back-monitor-link" class="back-btn"><i class="fa fa-arrow-left"></i> 返回主界面</a>
+            <h1><i class="fa fa-video-camera"></i> 录制管理</h1>
+        </div>
+        <div class="header-actions">
+            <button id="agent-toggle-btn" onclick="toggleAgentPanel()" class="active">
+                <i class="fa fa-robot"></i> AI Agent
+            </button>
+        </div>
+    </header>
+
+    <div class="main-layout">
+        <!-- 左侧摄像头列表 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <i class="fa fa-video"></i>
+                <span>摄像头列表</span>
+            </div>
+            <div class="camera-list" id="camera-list"></div>
+        </div>
+
+        <!-- 中间文件区 -->
+        <div class="content" id="content">
+            <div class="empty-files">
+                <i class="fa fa-hand-o-left"></i>
+                <div>请从左侧选择一个摄像头</div>
+            </div>
+        </div>
+
+        <!-- 右侧 Agent 面板 -->
+        <div class="agent-panel" id="agent-panel">
+            <div class="agent-header">
+                <span><i class="fa fa-robot"></i> AI 智能体</span>
+                <button onclick="toggleAgentPanel()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:14px;">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+            <div class="agent-messages" id="agent-messages">
+                <div class="agent-placeholder">
+                    <i class="fa fa-robot"></i>
+                    <div>选择一段录制视频</div>
+                    <div style="margin-top:6px;font-size:12px;">点击文件卡片上的「🤖 分析」按钮<br>将视频发送给 Agent</div>
+                </div>
+            </div>
+            <div class="agent-input-area">
+                <div class="agent-selected-file" id="agent-selected-file"></div>
+                <div class="agent-input-row">
+                    <input type="text" class="agent-input" id="agent-input" placeholder="输入指令..." onkeydown="if(event.key==='Enter')sendAgentMsg()">
+                    <button class="agent-send" id="agent-send-btn" onclick="sendAgentMsg()">
+                        <i class="fa fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 视频播放弹窗 -->
+    <div class="video-modal" id="video-modal">
+        <button class="close-btn" onclick="closeVideo()"><i class="fa fa-times"></i></button>
+        <video id="video-player" controls></video>
+    </div>
+
+    <script>
+        window.onerror = function(msg, url, line) {
+            document.body.innerHTML = '<div style="padding:40px 20px;color:#ef4444;text-align:center;"><h2><i class="fa fa-exclamation-circle"></i> 页面发生错误</h2><pre style="background:#1e1e1e;padding:16px;border-radius:8px;text-align:left;margin-top:20px;color:#e2e8f0;font-size:13px;overflow:auto;">' + msg + '\nLine: ' + line + '</pre><p style="margin-top:20px;color:#94a3b8;">请打开 Electron 控制台（Ctrl+Shift+I）查看详细错误</p></div>';
+            return true;
+        };
+
+        const isElectron = !!window.electronAPI;
+        let BACKEND_URL = isElectron ? 'https://127.0.0.1:8082' : '';
+
+        // Electron 中 file:// 协议下相对链接无效，改为完整 URL
+        // 同时获取动态端口
+        if (isElectron && window.electronAPI.getPorts) {
+            window.electronAPI.getPorts().then(ports => {
+                if (ports.nodePort) BACKEND_URL = `https://127.0.0.1:${ports.nodePort}`;
+                const backLink = document.getElementById('back-monitor-link');
+                if (backLink && ports.nginxPort) backLink.href = `https://127.0.0.1:${ports.nginxPort}/dashboard`;
+                loadRecordings();
+            }).catch(() => {
+                // 获取端口失败，使用默认端口
+                const backLink = document.getElementById('back-monitor-link');
+                if (backLink) backLink.href = 'https://127.0.0.1:8443/dashboard';
+                loadRecordings();
+            });
+        } else {
+            // 非 Electron 模式（浏览器访问 nginx），使用相对路径
+            loadRecordings();
+        }
+        let recordings = [];
+        let activeCamId = null;
+        let selectedFile = null;
+        let agentMessages = [];
+
+        async function autoStartRec(camId) {
+            return false;
+            if (!autoRecEnabled || autoRecStarted.has(camId)) return;
+            autoRecStarted.add(camId);
+            try {
+                const url = BACKEND_URL + '/api/recordings/' + camId + '/start';
+                const resp = await fetch(url, { method: 'POST' });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            } catch (e) {
+                console.error('自动录制失败:', e);
+                autoRecStarted.delete(camId);
+            }
+        }
+
+        async function loadRecordings() {
+            try {
+                const resp = await fetch(BACKEND_URL + '/api/recordings');
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const ct = resp.headers.get('content-type') || '';
+                if (!ct.includes('application/json')) throw new Error('响应格式错误 (收到 ' + ct + ')');
+                const data = await resp.json();
+                recordings = data.recordings || [];
+                renderSidebar();
+                if (activeCamId) renderContent(activeCamId);
+            } catch (e) {
+                document.getElementById('camera-list').innerHTML =
+                    `<div class="empty-files"><i class="fa fa-exclamation-circle"></i>加载失败: ${escapeHtml(e.message)}</div>`;
+                document.getElementById('content').innerHTML =
+                    `<div class="empty-files"><i class="fa fa-exclamation-circle"></i>API 请求失败，请确认后端已重启</div>`;
+            }
+        }
+
+        function renderSidebar() {
+            const el = document.getElementById('camera-list');
+            if (recordings.length === 0) {
+                el.innerHTML = `<div class="empty-files"><i class="fa fa-video-camera"></i>暂无摄像头</div>`;
+                return;
+            }
+            el.innerHTML = recordings.map(group => {
+                const isActive = group.cameraId === activeCamId;
+                const statusClass = group.status || 'unknown';
+                return `
+                    <div class="camera-item ${isActive ? 'active' : ''}" onclick="selectCamera('${group.cameraId}')">
+                        <div class="cam-info">
+                            <span class="status-dot ${statusClass}"></span>
+                            <div style="min-width:0;">
+                                <div class="cam-name">${escapeHtml(group.label || group.cameraId)}</div>
+                                <div class="cam-id-tag">${escapeHtml(group.cameraId)}</div>
+                            </div>
+                            ${group.isRecording ? '<span class="rec-indicator"></span>' : ''}
+                        </div>
+                        <label class="toggle-switch" onclick="event.stopPropagation();">
+                            <input type="checkbox" ${group.isRecording ? 'checked' : ''}
+                                onchange="toggleRec('${group.cameraId}', this.checked)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function selectCamera(camId) {
+            activeCamId = camId;
+            renderSidebar();
+            renderContent(camId);
+        }
+
+        function renderContent(camId) {
+            const group = recordings.find(g => g.cameraId === camId);
+            if (!group) return;
+
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="content-header">
+                    <h2>${escapeHtml(group.label || group.cameraId)} <span style="font-size:13px;color:var(--text-muted);font-weight:400;">(${escapeHtml(group.cameraId)})</span></h2>
+                    <span class="meta">${group.files.length} 个文件</span>
+                </div>
+                ${group.files.length === 0
+                    ? `<div class="empty-files"><i class="fa fa-folder-open-o"></i><div>暂无录制文件</div></div>`
+                    : `<div class="file-grid">${group.files.map(f => {
+                        const isSel = selectedFile && selectedFile.fileName === f.name && selectedFile.camId === group.cameraId;
+                        return `
+                        <div class="file-card ${isSel ? 'selected' : ''}" onclick="selectFile('${group.cameraId}', '${encodeURIComponent(f.name)}', this)">
+                            <div class="file-card-header">
+                                <div class="file-icon"><i class="fa fa-file-video-o"></i></div>
+                                <div>
+                                    <div class="file-card-title">${escapeHtml(f.name)}</div>
+                                    <div class="file-card-meta">${f.sizeMb} MB · ${formatTime(f.created)}</div>
+                                </div>
+                            </div>
+                            <div class="file-card-actions">
+                                <button class="btn-sm btn-play" onclick="event.stopPropagation();playVideo('${group.cameraId}', '${encodeURIComponent(f.name)}')">
+                                    <i class="fa fa-play"></i> 播放
+                                </button>
+                                <a class="btn-sm btn-download" onclick="event.stopPropagation()"
+                                   href="${BACKEND_URL}/api/recordings/${group.cameraId}/${encodeURIComponent(f.name)}" download="${encodeURIComponent(f.name)}">
+                                    <i class="fa fa-download"></i> 下载
+                                </a>
+                                <button class="btn-sm btn-delete" onclick="event.stopPropagation();deleteFile('${group.cameraId}', '${encodeURIComponent(f.name)}')">
+                                    <i class="fa fa-trash"></i> 删除
+                                </button>
+                                <button class="btn-sm btn-agent" onclick="event.stopPropagation();sendFileToAgent('${group.cameraId}', '${encodeURIComponent(f.name)}', '${escapeHtml(f.name)}')">
+                                    <i class="fa fa-robot"></i> 分析
+                                </button>
+                            </div>
+                        </div>
+                    `}).join('')}</div>`
+                }
+            `;
+        }
+
+        function selectFile(camId, fileName, el) {
+            document.querySelectorAll('.file-card').forEach(c => c.classList.remove('selected'));
+            if (el) el.classList.add('selected');
+            selectedFile = { camId, fileName: decodeURIComponent(fileName), filePath: `${BACKEND_URL}/api/recordings/${camId}/${fileName}` };
+            const selEl = document.getElementById('agent-selected-file');
+            selEl.textContent = '📹 ' + selectedFile.fileName;
+            selEl.classList.add('visible');
+        }
+
+        function sendFileToAgent(camId, fileName, displayName) {
+            selectFile(camId, fileName, null);
+            addAgentMessage('user', `请分析这段视频: ${displayName}`);
+            addAgentMessage('bot', '正在分析视频...（Agent 接口待对接）');
+            // TODO: 对接 Agent API
+            // agentAnalyzeVideo(camId, decodeURIComponent(fileName));
+        }
+
+        function addAgentMessage(role, text) {
+            const container = document.getElementById('agent-messages');
+            // 首次添加消息时清空 placeholder
+            if (agentMessages.length === 0) container.innerHTML = '';
+            agentMessages.push({ role, text, time: new Date().toLocaleTimeString('zh-CN', { hour12: false }) });
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `agent-msg ${role}`;
+            const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            msgDiv.innerHTML = `<div>${escapeHtml(text)}</div><div class="msg-time">${timeStr}</div>`;
+            container.appendChild(msgDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function sendAgentMsg() {
+            const input = document.getElementById('agent-input');
+            const text = input.value.trim();
+            if (!text) return;
+            input.value = '';
+            addAgentMessage('user', text);
+            addAgentMessage('bot', '收到指令，Agent 处理中...（接口待对接）');
+            // TODO: 对接 Agent API
+            // const resp = await fetch('/api/agent/chat', { method: 'POST', body: JSON.stringify({ message: text, file: selectedFile }) });
+        }
+
+        function toggleAgentPanel() {
+            const panel = document.getElementById('agent-panel');
+            const btn = document.getElementById('agent-toggle-btn');
+            panel.classList.toggle('collapsed');
+            btn.classList.toggle('active');
+        }
+
+        async function toggleRec(camId, shouldRecord) {
+            try {
+                const url = BACKEND_URL + '/api/recordings/' + camId + (shouldRecord ? '/start' : '/stop');
+                const resp = await fetch(url, { method: 'POST' });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                loadRecordings();
+            } catch (e) {
+                alert('操作失败: ' + e.message);
+                loadRecordings();
+            }
+        }
+
+        async function deleteFile(camId, fileName) {
+            if (!confirm('确定要删除这个录制文件吗？')) return;
+            try {
+                const resp = await fetch(BACKEND_URL + '/api/recordings/' + camId + '/' + fileName, { method: 'DELETE' });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                loadRecordings();
+            } catch (e) {
+                alert('删除失败: ' + e.message);
+            }
+        }
+
+        function playVideo(camId, fileName) {
+            const modal = document.getElementById('video-modal');
+            const player = document.getElementById('video-player');
+            player.src = BACKEND_URL + '/api/recordings/' + camId + '/' + fileName;
+            modal.classList.add('active');
+            player.play();
+        }
+
+        function closeVideo() {
+            const modal = document.getElementById('video-modal');
+            const player = document.getElementById('video-player');
+            player.pause();
+            player.src = '';
+            modal.classList.remove('active');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatTime(iso) {
+            const d = new Date(iso);
+            return d.toLocaleString('zh-CN', { hour12: false, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+
+        loadRecordings();
+        setInterval(loadRecordings, 5000);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeVideo(); });
+    </script>
+</body>
+</html>

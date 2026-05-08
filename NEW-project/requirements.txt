@@ -1,0 +1,9 @@
+# Legacy Python components and Python skills
+aiohttp
+aiortc
+numpy
+opencv-python
+Pillow
+psutil
+requests
+ultralytics

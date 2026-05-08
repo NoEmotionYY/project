@@ -1,0 +1,616 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CYPHER 威胁感知中心</title>
+  <style>
+    :root {
+      --bg: #070b14;
+      --panel: #111827;
+      --panel-soft: #172033;
+      --line: #2c3852;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+    header {
+      height: 60px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 24px;
+      background: rgba(7, 11, 20, 0.92);
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 3;
+    }
+    .brand { font-weight: 700; }
+    .brand span { color: var(--accent); }
+    nav { display: flex; gap: 10px; flex-wrap: wrap; }
+    nav a, nav button {
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 7px;
+      text-decoration: none;
+    }
+    nav a:hover, nav button:hover { border-color: var(--accent); }
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 18px;
+      padding: 18px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .video-wrap {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      background: #020617;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      overflow: hidden;
+    }
+    .video-wrap img { width: 100%; height: 100%; object-fit: contain; background: #020617; }
+    .video-label {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: rgba(2, 6, 23, 0.78);
+      border: 1px solid var(--line);
+      border-radius: 99px;
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+    .camera-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
+      padding: 14px;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 7px;
+      cursor: pointer;
+      font: inherit;
+      text-align: left;
+    }
+    button.active, button:hover { border-color: var(--accent); }
+    .status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .dot.ok { background: var(--ok); }
+    .dot.warn { background: var(--warn); }
+    .feed { padding: 12px; display: grid; gap: 10px; max-height: calc(100vh - 140px); overflow: auto; }
+    .analysis-panel {
+      border-top: 1px solid var(--line);
+      padding: 14px 16px;
+      display: grid;
+      gap: 10px;
+    }
+    .analysis-bar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+    .analysis-content {
+      min-height: 118px;
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0b1220;
+      padding: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+    .analysis-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .analysis-tag {
+      border: 1px solid var(--line);
+      border-radius: 99px;
+      padding: 3px 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .alert-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+    .alert-card.critical { border-color: rgba(239, 68, 68, 0.55); }
+    .alert-card.warning { border-color: rgba(245, 158, 11, 0.55); }
+    .alert-card.info { border-color: rgba(56, 189, 248, 0.45); }
+    .alert-top { display: flex; justify-content: space-between; gap: 10px; }
+    .title { font-weight: 700; }
+    .meta { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .badge { font-size: 12px; border-radius: 99px; padding: 3px 8px; border: 1px solid var(--line); }
+    .critical .badge { color: var(--danger); }
+    .warning .badge { color: var(--warn); }
+    .info .badge { color: var(--accent); }
+    .empty { color: var(--muted); text-align: center; padding: 36px 12px; }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      background: rgba(2, 6, 23, 0.72);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+    .modal-backdrop[hidden] { display: none; }
+    .skill-modal {
+      width: min(860px, 100%);
+      max-height: min(760px, calc(100vh - 36px));
+      overflow: hidden;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+    }
+    .modal-head, .modal-actions {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+    .modal-actions {
+      border-top: 1px solid var(--line);
+      border-bottom: 0;
+      justify-content: flex-end;
+    }
+    .skill-tabs {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .skill-tab[aria-selected="true"] { border-color: var(--accent); }
+    .skill-modal-body {
+      overflow: auto;
+      padding: 14px 16px;
+      display: grid;
+      gap: 10px;
+    }
+    .skill-row {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: var(--panel-soft);
+      display: grid;
+      gap: 8px;
+    }
+    .skill-row-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+    .skill-row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .safety-note {
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: rgba(56, 189, 248, 0.08);
+      border-radius: 8px;
+      padding: 12px;
+      line-height: 1.7;
+      color: var(--text);
+    }
+    @media (max-width: 980px) {
+      main { grid-template-columns: 1fr; }
+      .feed { max-height: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span>CYPHER</span> 威胁感知中心</div>
+    <nav>
+      <a href="/dashboard" aria-current="page">主界面</a>
+      <a href="/events">事件中心</a>
+      <a href="/settings">检测配置</a>
+      <a href="/recordings">录像</a>
+      <button id="skill-manager-open" type="button">技能管理</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <strong>实时画面</strong>
+          <div class="meta">使用 CYPHER 当前帧接口刷新，不启用 MJPEG 链路。</div>
+        </div>
+        <div class="status"><span id="sse-dot" class="dot"></span><span id="sse-status">SSE 未连接</span></div>
+      </div>
+      <div class="video-wrap">
+        <img id="video-frame" alt="当前摄像头画面">
+        <div id="video-placeholder">等待摄像头帧</div>
+        <div class="video-label" id="active-camera-label">active</div>
+      </div>
+      <div class="camera-list" id="camera-list"></div>
+      <div class="analysis-panel" aria-label="AI 分析">
+        <div class="analysis-bar">
+          <strong>AI 分析</strong>
+          <span id="analysis-status">等待分析</span>
+          <span id="analysis-time">--</span>
+        </div>
+        <div class="analysis-content" id="analysis-content">等待摄像头帧或 AI 分析结果。</div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="panel-head">
+        <div>
+          <strong>威胁感知</strong>
+          <div class="meta">最近 20 条告警</div>
+        </div>
+        <button id="clear-alerts" style="text-align:center;">清空</button>
+      </div>
+      <div class="feed" id="alert-feed">
+        <div class="empty" id="empty-feed">暂无实时告警</div>
+      </div>
+    </aside>
+  </main>
+
+  <div class="modal-backdrop" id="skill-modal" hidden>
+    <section class="skill-modal" role="dialog" aria-modal="true" aria-labelledby="skill-modal-title">
+      <div class="modal-head">
+        <div>
+          <strong id="skill-modal-title">技能管理</strong>
+          <div class="meta">技能只会在用户明确启用后参与 AI 分析。</div>
+        </div>
+        <button id="skill-modal-close" type="button">关闭</button>
+      </div>
+      <div class="skill-tabs" role="tablist" aria-label="技能管理标签">
+        <button class="skill-tab" type="button" data-tab="enabled" aria-selected="true">已启用</button>
+        <button class="skill-tab" type="button" data-tab="all" aria-selected="false">全部技能</button>
+        <button class="skill-tab" type="button" data-tab="safety" aria-selected="false">安全说明</button>
+      </div>
+      <div class="skill-modal-body" id="skill-modal-body"></div>
+      <div class="modal-actions">
+        <button id="skill-refresh" type="button">刷新技能列表</button>
+        <button id="skill-modal-close-bottom" type="button">关闭</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    let cameras = [];
+    let activeCameraId = '';
+    let eventSource = null;
+    let skillTab = 'enabled';
+    let skillItems = [];
+    const seenAlerts = new Set();
+    const alertFeed = document.getElementById('alert-feed');
+    const analysisContent = document.getElementById('analysis-content');
+    const skillModal = document.getElementById('skill-modal');
+    const skillModalBody = document.getElementById('skill-modal-body');
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+
+    function severityText(value) {
+      const level = String(value || '').toLowerCase();
+      if (['critical', 'danger', 'high'].includes(level)) return '高危';
+      if (level === 'warning') return '警告';
+      return '信息';
+    }
+
+    function formatConfidence(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return '-';
+      return Math.round(n * 100) + '%';
+    }
+
+    function normalizeAlerts(data) {
+      const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+      if (alerts.length) return alerts;
+      if (data.alert || data.alert_message || data.risk_level) {
+        return [{
+          id: data.id,
+          title: data.alert_message || 'AI 告警',
+          category_cn: data.alert_details?.[0] || data.alert_message || '风险提示',
+          severity: data.risk_level || 'warning',
+          confidence: data.confidence,
+          cameraId: data.cameraId,
+          camera_id: data.camera_id,
+          created_at: data.timestamp || data.time
+        }];
+      }
+      return [];
+    }
+
+    function pushAlert(alert) {
+      const key = alert.id || [alert.type, alert.title, alert.cameraId || alert.camera_id, alert.created_at || alert.timestamp].join('|');
+      if (seenAlerts.has(key)) return;
+      seenAlerts.add(key);
+      const empty = document.getElementById('empty-feed');
+      if (empty) empty.remove();
+      const card = document.createElement('article');
+      card.className = 'alert-card';
+      const title = alert.title || alert.category_cn || alert.type || 'AI 告警';
+      const camera = alert.camera_label || alert.cameraId || alert.camera_id || 'unknown';
+      const time = alert.created_at || alert.timestamp || new Date().toLocaleTimeString('zh-CN', { hour12: false });
+      const snapshot = alert.id ? `<a href="/api/alerts/${encodeURIComponent(alert.id)}/snapshot" target="_blank" rel="noreferrer">查看快照</a>` : '';
+      card.innerHTML = `
+        <div class="alert-title">${escapeHtml(title)}</div>
+        <div class="meta">${escapeHtml(severityText(alert.severity))} / ${escapeHtml(camera)} / ${escapeHtml(formatConfidence(alert.confidence))}</div>
+        <div class="meta">${escapeHtml(time)} ${snapshot}</div>
+      `;
+      alertFeed.prepend(card);
+      while (alertFeed.children.length > 20) alertFeed.lastElementChild.remove();
+    }
+
+    function handleRealtimePayload(data) {
+      normalizeAlerts(data).forEach(pushAlert);
+    }
+
+    function updateAnalysisDisplay(data) {
+      const status = document.getElementById('analysis-status');
+      const time = document.getElementById('analysis-time');
+      status.textContent = data.analyzing ? '分析中' : '已更新';
+      time.textContent = data.time || new Date().toLocaleTimeString('zh-CN', { hour12: false });
+      const parts = [];
+      if (data.text) parts.push(`<p>${escapeHtml(data.text)}</p>`);
+      if (Array.isArray(data.alert_details) && data.alert_details.length) {
+        parts.push('<p><strong>风险详情：</strong>' + data.alert_details.map(escapeHtml).join('；') + '</p>');
+      }
+      const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+      const detections = Array.isArray(data.detections) ? data.detections : [];
+      if (alerts.length) parts.push('<p><strong>告警：</strong>' + alerts.map(item => escapeHtml(item.category_cn || item.title || item.type)).join('；') + '</p>');
+      if (detections.length) parts.push('<p><strong>检测：</strong>' + detections.map(item => escapeHtml(item.name || item.label)).join('；') + '</p>');
+      if (data.risk_level) parts.push('<p><strong>风险等级：</strong>' + escapeHtml(severityText(data.risk_level)) + '</p>');
+      analysisContent.innerHTML = parts.join('') || '等待摄像头帧或 AI 分析结果。';
+    }
+
+    function connectSse() {
+      const dot = document.getElementById('sse-dot');
+      const label = document.getElementById('sse-status');
+      if (eventSource) eventSource.close();
+      eventSource = new EventSource('/api/events');
+      eventSource.onopen = () => {
+        dot.classList.add('on');
+        label.textContent = 'SSE 已连接';
+      };
+      eventSource.onmessage = event => {
+        try {
+          const data = JSON.parse(event.data);
+          handleRealtimePayload(data);
+          updateAnalysisDisplay(data);
+        } catch (error) {
+          console.warn('SSE payload parse failed:', error.message);
+        }
+      };
+      eventSource.onerror = () => {
+        dot.classList.remove('on');
+        label.textContent = 'SSE 断开，使用轮询兜底';
+      };
+    }
+
+    async function pollAnalysis() {
+      try {
+        const response = await fetch('/api/analysis?t=' + Date.now(), { cache: 'no-store' });
+        if (!response.ok) return;
+        const data = await response.json();
+        handleRealtimePayload(data);
+        updateAnalysisDisplay(data);
+      } catch (error) {
+        console.warn('analysis fallback failed:', error.message);
+      }
+    }
+
+    function frameEndpoint() {
+      if (!activeCameraId || activeCameraId === 'webrtc' || activeCameraId === 'active') return '/api/frame';
+      return `/api/cameras/${encodeURIComponent(activeCameraId)}/frame`;
+    }
+
+    function refreshFrame() {
+      const image = document.getElementById('video-frame');
+      const placeholder = document.getElementById('video-placeholder');
+      image.onload = () => {
+        image.style.display = 'block';
+        placeholder.style.display = 'none';
+      };
+      image.onerror = () => {
+        image.style.display = 'none';
+        placeholder.style.display = 'block';
+        const label = activeCameraId || 'active';
+        placeholder.textContent = `等待摄像头帧：${label}。请打开推流页，或在设置页启动 RTSP/IP 摄像头。`;
+      };
+      image.src = `${frameEndpoint()}?t=${Date.now()}`;
+    }
+
+    function renderCameras() {
+      const list = document.getElementById('camera-list');
+      if (!cameras.length) {
+        list.innerHTML = '<div class="meta">暂无摄像头；将显示 active 当前帧。</div>';
+        document.getElementById('active-camera-label').textContent = 'active';
+        return;
+      }
+      list.innerHTML = cameras.map(camera => `
+        <button class="${camera.id === activeCameraId ? 'active' : ''}" data-camera="${escapeHtml(camera.id)}">
+          <strong>${escapeHtml(camera.label || camera.id)}</strong><br>
+          <span class="meta">${escapeHtml(camera.id)} / ${escapeHtml(camera.status || '-')} / ${camera.hasFrame ? '有帧' : '无帧'} / ${Number(camera.frameCount || 0)}</span>
+        </button>
+      `).join('');
+      list.querySelectorAll('button').forEach(button => {
+        button.addEventListener('click', () => {
+          activeCameraId = button.dataset.camera;
+          renderCameras();
+          refreshFrame();
+        });
+      });
+      const active = cameras.find(camera => camera.id === activeCameraId);
+      document.getElementById('active-camera-label').textContent = active ? (active.label || active.id) : activeCameraId;
+    }
+
+    async function loadCameras() {
+      try {
+        const response = await fetch('/api/cameras', { cache: 'no-store' });
+        const data = await response.json();
+        cameras = data.cameras || [];
+        const hasActive = cameras.some(camera => camera.id === activeCameraId);
+        const frameCamera = cameras.find(camera => camera.hasFrame);
+        if (!activeCameraId || !hasActive) activeCameraId = data.active || frameCamera?.id || cameras[0]?.id || 'active';
+        if ((activeCameraId === 'webrtc' || activeCameraId === 'active') && frameCamera) activeCameraId = frameCamera.id;
+        renderCameras();
+      } catch (error) {
+        cameras = [];
+        activeCameraId = activeCameraId || 'active';
+        renderCameras();
+      }
+    }
+
+    function openSkillModal() {
+      skillModal.hidden = false;
+      loadSkills();
+    }
+
+    function closeSkillModal() {
+      skillModal.hidden = true;
+    }
+
+    function setSkillTab(nextTab) {
+      skillTab = nextTab;
+      document.querySelectorAll('.skill-tab').forEach(tab => tab.setAttribute('aria-selected', tab.dataset.tab === skillTab ? 'true' : 'false'));
+      renderSkills();
+    }
+
+    async function loadSkills() {
+      skillModalBody.innerHTML = '<div class="meta">正在读取技能列表...</div>';
+      try {
+        const response = await fetch('/api/skills', { cache: 'no-store' });
+        const data = await response.json();
+        skillItems = Array.isArray(data.skills) ? data.skills : [];
+        renderSkills();
+      } catch (error) {
+        skillModalBody.innerHTML = `<div class="safety-note">技能列表读取失败：${escapeHtml(error.message)}</div>`;
+      }
+    }
+
+    function renderSkillRow(skill) {
+      const id = skill.id || skill.name || '';
+      const label = skill.label || skill.name || skill.id || '未命名技能';
+      const enabled = skill.enabled === true;
+      const nextEnabled = !enabled;
+      const action = nextEnabled ? '启用' : '禁用';
+      return `
+        <div class="skill-row">
+          <div class="skill-row-top">
+            <div>
+              <strong>${escapeHtml(label)}</strong>
+              <div class="meta">${escapeHtml(id || '-')} / ${escapeHtml(skill.type || 'unknown')} / ${enabled ? '已启用' : '未启用'}</div>
+              <div class="meta">${escapeHtml(skill.description || '暂无描述')}</div>
+            </div>
+            <div class="skill-row-actions"><button type="button" data-skill-toggle="${escapeHtml(id)}" data-enabled="${String(nextEnabled)}">${action}</button></div>
+          </div>
+        </div>`;
+    }
+
+    function renderSkills() {
+      if (skillTab === 'safety') {
+        skillModalBody.innerHTML = `
+          <div class="safety-note">
+            <strong>安全说明</strong><br>
+            Web 技能安装已禁用。页面不支持上传新技能。新技能必须通过受控本地部署流程加入。安装不等于启用；只有用户在这里明确启用后，技能才会参与 AI 分析。
+          </div>`;
+        return;
+      }
+      const rows = skillTab === 'enabled' ? skillItems.filter(skill => skill.enabled === true) : skillItems;
+      if (!rows.length) {
+        skillModalBody.innerHTML = `<div class="empty">${skillTab === 'enabled' ? '暂无已启用技能' : '暂无技能'}</div>`;
+        return;
+      }
+      skillModalBody.innerHTML = rows.map(renderSkillRow).join('');
+      skillModalBody.querySelectorAll('[data-skill-toggle]').forEach(button => {
+        button.addEventListener('click', () => toggleSkill(button.dataset.skillToggle, button.dataset.enabled === 'true'));
+      });
+    }
+
+    async function toggleSkill(skillId, enabled) {
+      if (!skillId) return;
+      const ok = window.confirm(`${enabled ? '启用' : '禁用'}技能 ${skillId}？启用后该技能会参与 AI 分析。`);
+      if (!ok) return;
+      try {
+        const response = await fetch('/api/skills/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ skill: skillId, enabled })
+        });
+        const data = await response.json();
+        if (!response.ok || data.success === false) throw new Error(data.error || '切换技能失败');
+        await loadSkills();
+      } catch (error) {
+        alert('技能切换失败：' + error.message);
+      }
+    }
+
+    document.getElementById('clear-alerts').addEventListener('click', () => {
+      alertFeed.innerHTML = '<div class="empty" id="empty-feed">暂无实时告警</div>';
+      seenAlerts.clear();
+    });
+    document.getElementById('skill-manager-open').addEventListener('click', openSkillModal);
+    document.getElementById('skill-modal-close').addEventListener('click', closeSkillModal);
+    document.getElementById('skill-modal-close-bottom').addEventListener('click', closeSkillModal);
+    document.getElementById('skill-refresh').addEventListener('click', loadSkills);
+    document.querySelectorAll('.skill-tab').forEach(tab => tab.addEventListener('click', () => setSkillTab(tab.dataset.tab)));
+    skillModal.addEventListener('click', event => { if (event.target === skillModal) closeSkillModal(); });
+
+    connectSse();
+    loadCameras();
+    pollAnalysis();
+    refreshFrame();
+    setInterval(loadCameras, 10000);
+    setInterval(refreshFrame, 1000);
+    setInterval(pollAnalysis, 3000);
+  </script>
+</body>
+</html>
+
+

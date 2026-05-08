@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CYPHER 事件中心</title>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --panel: #111827;
+      --panel-soft: #172033;
+      --line: #2c3852;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --ok: #22c55e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+    header {
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(15, 23, 42, 0.92);
+      position: sticky;
+      top: 0;
+      z-index: 3;
+    }
+    .brand { display: flex; align-items: center; gap: 14px; font-weight: 700; }
+    .brand span { color: var(--accent); }
+    nav { display: flex; gap: 10px; flex-wrap: wrap; }
+    nav a, button {
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 7px;
+      text-decoration: none;
+      cursor: pointer;
+      font: inherit;
+    }
+    nav a:hover, button:hover { border-color: var(--accent); }
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 18px;
+      padding: 18px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr)) auto;
+      gap: 10px;
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    input, select {
+      width: 100%;
+      background: #0f172a;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 8px 10px;
+      outline: none;
+    }
+    input:focus, select:focus { border-color: var(--accent); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid rgba(44, 56, 82, 0.7); text-align: left; }
+    th { color: var(--muted); font-size: 12px; font-weight: 600; }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover, tbody tr.active { background: rgba(56, 189, 248, 0.08); }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 99px; font-size: 12px; border: 1px solid var(--line); }
+    .critical { color: var(--danger); border-color: rgba(239, 68, 68, 0.45); }
+    .warning { color: var(--warn); border-color: rgba(245, 158, 11, 0.45); }
+    .info { color: var(--accent); border-color: rgba(56, 189, 248, 0.45); }
+    .footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; color: var(--muted); }
+    .pager { display: flex; gap: 8px; }
+    aside.panel { align-self: start; position: sticky; top: 78px; }
+    .detail { padding: 16px; display: grid; gap: 14px; }
+    .snapshot {
+      aspect-ratio: 16 / 9;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #020617;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      overflow: hidden;
+    }
+    .snapshot img { width: 100%; height: 100%; object-fit: contain; background: #020617; }
+    .kv { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; font-size: 14px; }
+    .kv .k { color: var(--muted); }
+    .empty { padding: 48px 16px; text-align: center; color: var(--muted); }
+    details { color: var(--muted); }
+    pre { white-space: pre-wrap; word-break: break-word; color: var(--text); background: #0f172a; padding: 10px; border-radius: 7px; max-height: 220px; overflow: auto; }
+    @media (max-width: 980px) {
+      main { grid-template-columns: 1fr; }
+      aside.panel { position: static; }
+      .toolbar { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span>CYPHER</span> 事件中心</div>
+    <nav>
+      <a href="/dashboard">主界面</a>
+      <a href="/settings">检测配置</a>
+      <a href="/recordings">录像</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="toolbar">
+        <select id="severity-filter">
+          <option value="">全部等级</option>
+          <option value="critical">高危</option>
+          <option value="warning">警告</option>
+          <option value="info">信息</option>
+        </select>
+        <select id="category-filter">
+          <option value="">全部类别</option>
+          <option value="no-helmet">未戴安全帽</option>
+          <option value="no-vest">未穿反光衣</option>
+          <option value="fire">火灾</option>
+          <option value="smoke">烟雾</option>
+          <option value="ppe">PPE</option>
+          <option value="hazard">风险</option>
+        </select>
+        <input id="camera-filter" placeholder="摄像头 ID">
+        <input id="keyword-filter" placeholder="搜索标题/模型/技能">
+        <select id="limit-filter">
+          <option value="50">50 条</option>
+          <option value="100">100 条</option>
+          <option value="200">200 条</option>
+        </select>
+        <button id="refresh-btn">刷新</button>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>摄像头</th>
+              <th>类别</th>
+              <th>等级</th>
+              <th>置信度</th>
+              <th>模型</th>
+            </tr>
+          </thead>
+          <tbody id="event-rows"></tbody>
+        </table>
+      </div>
+      <div class="footer">
+        <span id="list-status">等待加载</span>
+        <div class="pager">
+          <button id="prev-page">上一页</button>
+          <button id="next-page">下一页</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="detail" id="detail-panel">
+        <h2 style="margin:0;">事件详情</h2>
+        <div class="snapshot" id="snapshot-box">选择事件后显示快照</div>
+        <div class="kv"><div class="k">时间</div><div id="detail-created">-</div></div>
+        <div class="kv"><div class="k">摄像头</div><div id="detail-camera">-</div></div>
+        <div class="kv"><div class="k">类别</div><div id="detail-category">-</div></div>
+        <div class="kv"><div class="k">等级</div><div id="detail-severity">-</div></div>
+        <div class="kv"><div class="k">置信度</div><div id="detail-confidence">-</div></div>
+        <div class="kv"><div class="k">模型</div><div id="detail-model">-</div></div>
+        <div class="kv"><div class="k">技能</div><div id="detail-skill">-</div></div>
+        <div class="kv"><div class="k">录像</div><div id="detail-video">暂无关联录像</div></div>
+        <details>
+          <summary>原始事件 JSON</summary>
+          <pre id="detail-raw">{}</pre>
+        </details>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    let page = 1;
+    let total = 0;
+    let items = [];
+    let selectedId = null;
+
+    const rowsEl = document.getElementById('event-rows');
+    const statusEl = document.getElementById('list-status');
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[char]));
+    }
+
+    function severityClass(value) {
+      const normalized = String(value || '').toLowerCase();
+      if (normalized === 'critical' || normalized === 'danger') return 'critical';
+      if (normalized === 'warning') return 'warning';
+      return 'info';
+    }
+
+    function severityText(value) {
+      const normalized = String(value || '').toLowerCase();
+      if (normalized === 'critical' || normalized === 'danger') return '高危';
+      if (normalized === 'warning') return '警告';
+      return '信息';
+    }
+
+    function confidenceText(value) {
+      const number = Number(value);
+      return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : '-';
+    }
+
+    function titleOf(item) {
+      return item.title || item.category_cn || item.alert_type || item.category || '事件';
+    }
+
+    function apiQuery() {
+      const params = new URLSearchParams();
+      const limit = document.getElementById('limit-filter').value || '50';
+      params.set('page', String(page));
+      params.set('limit', limit);
+      params.set('sort', 'desc');
+      const severity = document.getElementById('severity-filter').value;
+      const category = document.getElementById('category-filter').value;
+      const camera = document.getElementById('camera-filter').value.trim();
+      const q = document.getElementById('keyword-filter').value.trim();
+      if (severity) params.set('severity', severity);
+      if (category) params.set('category', category);
+      if (camera) params.set('camera_id', camera);
+      if (q) params.set('q', q);
+      return params.toString();
+    }
+
+    async function loadEvents() {
+      statusEl.textContent = '加载事件中...';
+      rowsEl.innerHTML = '';
+      try {
+        const response = await fetch(`/api/alerts?${apiQuery()}`, { cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
+        items = data.items || [];
+        total = data.total || 0;
+        renderRows();
+      } catch (error) {
+        rowsEl.innerHTML = `<tr><td colspan="6" class="empty">事件读取失败：${escapeHtml(error.message)}</td></tr>`;
+        statusEl.textContent = '读取失败';
+      }
+    }
+
+    function renderRows() {
+      if (!items.length) {
+        rowsEl.innerHTML = '<tr><td colspan="6" class="empty">暂无事件。数据库不存在或当前筛选无结果。</td></tr>';
+        statusEl.textContent = `第 ${page} 页，共 0 条`;
+        clearDetail();
+        return;
+      }
+      rowsEl.innerHTML = items.map(item => {
+        const active = selectedId === item.id ? 'active' : '';
+        return `
+          <tr class="${active}" data-id="${escapeHtml(item.id)}">
+            <td>${escapeHtml(item.created_at || '-')}</td>
+            <td>${escapeHtml(item.camera_label || item.camera_id || '-')}</td>
+            <td>${escapeHtml(titleOf(item))}</td>
+            <td><span class="pill ${severityClass(item.severity)}">${severityText(item.severity)}</span></td>
+            <td>${confidenceText(item.confidence)}</td>
+            <td>${escapeHtml(item.model_name || '-')}</td>
+          </tr>
+        `;
+      }).join('');
+      rowsEl.querySelectorAll('tr').forEach(row => {
+        row.addEventListener('click', () => loadDetail(Number(row.dataset.id)));
+      });
+      statusEl.textContent = `第 ${page} 页，当前 ${items.length} 条，总计 ${total} 条`;
+      if (!selectedId || !items.some(item => item.id === selectedId)) loadDetail(items[0].id);
+    }
+
+    function clearDetail() {
+      selectedId = null;
+      document.getElementById('snapshot-box').textContent = '选择事件后显示快照';
+      for (const id of ['detail-created','detail-camera','detail-category','detail-severity','detail-confidence','detail-model','detail-skill']) {
+        document.getElementById(id).textContent = '-';
+      }
+      document.getElementById('detail-video').textContent = '暂无关联录像';
+      document.getElementById('detail-raw').textContent = '{}';
+    }
+
+    async function loadDetail(id) {
+      selectedId = id;
+      renderRows();
+      try {
+        const response = await fetch(`/api/alerts/${encodeURIComponent(id)}`, { cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
+        renderDetail(data.item);
+      } catch (error) {
+        document.getElementById('detail-raw').textContent = `读取详情失败：${error.message}`;
+      }
+    }
+
+    function renderDetail(item) {
+      document.getElementById('detail-created').textContent = item.created_at || '-';
+      document.getElementById('detail-camera').textContent = `${item.camera_id || '-'}${item.camera_label ? ` / ${item.camera_label}` : ''}`;
+      document.getElementById('detail-category').textContent = `${item.category || '-'} / ${item.category_cn || item.alert_type || '-'}`;
+      document.getElementById('detail-severity').textContent = severityText(item.severity);
+      document.getElementById('detail-confidence').textContent = confidenceText(item.confidence);
+      document.getElementById('detail-model').textContent = item.model_name || '-';
+      document.getElementById('detail-skill').textContent = item.skill_id || item.source_skill || '-';
+      document.getElementById('detail-video').textContent = item.video_path || '暂无关联录像';
+      document.getElementById('detail-raw').textContent = item.raw ? JSON.stringify(item.raw, null, 2) : (item.raw_json || '{}');
+      const snapshotBox = document.getElementById('snapshot-box');
+      if (item.snapshot_path) {
+        snapshotBox.innerHTML = `<img src="/api/alerts/${encodeURIComponent(item.id)}/snapshot" alt="事件快照">`;
+        snapshotBox.querySelector('img').addEventListener('error', () => {
+          snapshotBox.textContent = '快照不存在或无法访问';
+        });
+      } else {
+        snapshotBox.textContent = '暂无快照';
+      }
+    }
+
+    document.getElementById('refresh-btn').addEventListener('click', () => { page = 1; loadEvents(); });
+    document.getElementById('prev-page').addEventListener('click', () => { if (page > 1) { page -= 1; loadEvents(); } });
+    document.getElementById('next-page').addEventListener('click', () => {
+      const limit = Number(document.getElementById('limit-filter').value || 50);
+      if (page * limit < total) { page += 1; loadEvents(); }
+    });
+    for (const id of ['severity-filter', 'category-filter', 'limit-filter']) {
+      document.getElementById(id).addEventListener('change', () => { page = 1; loadEvents(); });
+    }
+    for (const id of ['camera-filter', 'keyword-filter']) {
+      document.getElementById(id).addEventListener('keydown', event => {
+        if (event.key === 'Enter') { page = 1; loadEvents(); }
+      });
+    }
+    loadEvents();
+  </script>
+</body>
+</html>

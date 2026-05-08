@@ -1,0 +1,130 @@
+{
+  "name": "ai-monitor-electron",
+  "version": "1.0.0",
+  "description": "AI 安全监控中心 - Electron 桌面版",
+  "author": "AI Monitor Team <support@ai-monitor.com>",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "electron .",
+    "server": "node src/server.js",
+    "dev": "node dev.js",
+    "monitor": "node src/monitor.js",
+    "prepare-test-cert": "node scripts/ensure-test-cert.js",
+    "test": "node scripts/ensure-test-cert.js && node tests/test-system.js",
+    "test:backend": "node src/server.js",
+    "rebuild": "electron-rebuild",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "dist": "npm run rebuild && electron-builder --win",
+    "package-new": "node scripts/package-new-project.js"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@roamhq/wrtc": "^0.10.0",
+    "axios": "^1.15.2",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "7zip-bin": "^5.2.0",
+    "acorn": "^8.16.0",
+    "electron": "^30.5.1",
+    "electron-builder": "^24.13.3",
+    "electron-rebuild": "^3.2.9"
+  },
+  "build": {
+    "appId": "com.ai-monitor.app",
+    "productName": "真視眼 CYPHER",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron-main.js",
+      "dev.js",
+      "src/**/*",
+      "html/**/*",
+      "cert.pem",
+      "key.pem",
+      "skills/**/*",
+      "scripts/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "nginx",
+        "to": "nginx-runtime"
+      },
+      {
+        "from": "cert.pem",
+        "to": "cert.pem"
+      },
+      {
+        "from": "key.pem",
+        "to": "key.pem"
+      },
+      {
+        "from": "diagnose.bat",
+        "to": "diagnose.bat"
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/@roamhq/wrtc/**/*",
+      "node_modules/sharp/**/*",
+      "node_modules/@ffmpeg-installer/**/*",
+      "src/**/*",
+      "skills/**/*"
+    ],
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Utility"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "真視眼 CYPHER"
+    }
+  }
+}
