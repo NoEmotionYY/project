@@ -1,0 +1,336 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>桌面捕获推流 - 真視眼调试工具</title>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            width: 90%;
+            max-width: 800px;
+            padding: 40px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            font-size: 28px;
+            color: #60a5fa;
+            margin-bottom: 8px;
+        }
+        .header p {
+            color: #94a3b8;
+            font-size: 14px;
+        }
+        .card {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(96, 165, 250, 0.15);
+            border-radius: 16px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+        }
+        .preview-area {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #0f172a;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            overflow: hidden;
+            position: relative;
+        }
+        .preview-area video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .preview-placeholder {
+            text-align: center;
+            color: #64748b;
+        }
+        .preview-placeholder i {
+            font-size: 48px;
+            margin-bottom: 12px;
+            display: block;
+        }
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding: 12px 16px;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 10px;
+        }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #64748b;
+        }
+        .status-dot.connected { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+        .status-dot.error { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+        .status-text { color: #94a3b8; font-size: 14px; }
+        .info-text { color: #64748b; font-size: 13px; margin-left: auto; }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 28px;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #60a5fa);
+            color: white;
+        }
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444, #f87171);
+            color: white;
+        }
+        .btn-danger:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .tips {
+            margin-top: 20px;
+            padding: 16px;
+            background: rgba(59, 130, 246, 0.08);
+            border-left: 3px solid #3b82f6;
+            border-radius: 0 8px 8px 0;
+        }
+        .tips h3 {
+            font-size: 14px;
+            color: #60a5fa;
+            margin-bottom: 8px;
+        }
+        .tips ul {
+            font-size: 13px;
+            color: #94a3b8;
+            padding-left: 18px;
+            line-height: 1.8;
+        }
+        .rec-badge {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            display: none;
+            animation: pulse 1.5s infinite;
+        }
+        .rec-badge.active { display: block; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fa fa-desktop"></i> 桌面捕获推流</h1>
+            <p>将屏幕、窗口或浏览器标签页作为调试摄像头推送到监控系统</p>
+        </div>
+        <div class="card">
+            <div class="preview-area" id="preview-area">
+                <div class="preview-placeholder" id="placeholder">
+                    <i class="fa fa-desktop"></i>
+                    <div>点击开始捕获以选择屏幕源</div>
+                </div>
+                <video id="preview-video" autoplay playsinline muted style="display:none;"></video>
+                <div class="rec-badge" id="rec-badge"><i class="fa fa-circle"></i> 推流中</div>
+            </div>
+
+            <div class="status-bar">
+                <div class="status-dot" id="status-dot"></div>
+                <span class="status-text" id="status-text">未连接</span>
+                <span class="info-text" id="info-text">准备就绪</span>
+            </div>
+
+            <button class="btn btn-primary" id="start-btn" onclick="startCapture()">
+                <i class="fa fa-play"></i> 开始捕获并推流
+            </button>
+
+            <div class="tips">
+                <h3><i class="fa fa-lightbulb-o"></i> 浣跨敤鎻愮ず</h3>
+                <ul>
+                    <li>捕获的桌面画面会注册为「桌面捕获」摄像头，可在 monitor 面板切换查看</li>
+                    <li>选择「整个屏幕」可捕获全屏，选择「窗口」可捕获单个应用</li>
+                    <li>推流后画面会实时传输到后端，AI 技能会对其进行分析</li>
+                    <li>停止推流后摄像头会自动断开，可在 monitor 中删除</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = '';
+        let stream = null;
+        let pc = null;
+
+        const startBtn = document.getElementById('start-btn');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const infoText = document.getElementById('info-text');
+        const previewVideo = document.getElementById('preview-video');
+        const placeholder = document.getElementById('placeholder');
+        const recBadge = document.getElementById('rec-badge');
+
+        function apiUrl(path) {
+            return BACKEND_URL ? BACKEND_URL + path : path;
+        }
+
+        function getPeerConnectionConstructor() {
+            const PeerConnection =
+                window.RTCPeerConnection ||
+                window.webkitRTCPeerConnection ||
+                window.mozRTCPeerConnection;
+
+            if (typeof PeerConnection !== 'function') {
+                throw new Error('当前运行环境不支持 RTCPeerConnection，请使用 Chrome/Edge，并通过项目 HTTPS 页面打开，不要直接 file:// 打开');
+            }
+            return PeerConnection;
+        }
+
+        function ensureCaptureSupport() {
+            if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                throw new Error('桌面捕获需要 HTTPS 安全上下文，请通过 nginx HTTPS 地址访问');
+            }
+            if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
+                throw new Error('当前浏览器不支持屏幕捕获，请使用新版 Chrome/Edge 并授予权限');
+            }
+        }
+
+        async function startCapture() {
+            try {
+                startBtn.disabled = true;
+                infoText.textContent = '正在请求屏幕捕获权限...';
+                ensureCaptureSupport();
+                const PeerConnection = getPeerConnectionConstructor();
+
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { cursor: 'always' },
+                    audio: false
+                });
+
+                previewVideo.srcObject = stream;
+                previewVideo.style.display = 'block';
+                placeholder.style.display = 'none';
+                infoText.textContent = '屏幕已捕获，正在建立 WebRTC 连接...';
+
+                stream.getVideoTracks()[0].onended = () => stopCapture();
+
+                pc = new PeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+
+                stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                const response = await fetch(apiUrl('/offer'), {
+                    body: JSON.stringify({
+                        sdp: pc.localDescription.sdp,
+                        type: pc.localDescription.type,
+                        label: '桌面捕获'
+                    }),
+                    headers: { 'Content-Type': 'application/json' },
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error('HTTP ' + response.status + ': ' + text.substring(0, 120));
+                }
+                const answer = await response.json();
+                await pc.setRemoteDescription(answer);
+
+                statusDot.classList.add('connected');
+                statusText.textContent = '已连接';
+                infoText.textContent = '桌面视频流正在实时传输';
+                recBadge.classList.add('active');
+
+                startBtn.innerHTML = '<i class="fa fa-stop"></i> 停止推流';
+                startBtn.classList.remove('btn-primary');
+                startBtn.classList.add('btn-danger');
+                startBtn.onclick = stopCapture;
+            } catch (e) {
+                console.error(e);
+                statusDot.classList.add('error');
+                statusText.textContent = '错误';
+                infoText.textContent = '连接失败: ' + (e.message || '未知错误');
+                if (stream) {
+                    stream.getTracks().forEach(t => t.stop());
+                    stream = null;
+                }
+                if (pc) {
+                    pc.close();
+                    pc = null;
+                }
+            } finally {
+                startBtn.disabled = false;
+            }
+        }
+
+        function stopCapture() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            if (pc) {
+                pc.close();
+                pc = null;
+            }
+
+            previewVideo.style.display = 'none';
+            previewVideo.srcObject = null;
+            placeholder.style.display = 'flex';
+            recBadge.classList.remove('active');
+
+            statusDot.classList.remove('connected', 'error');
+            statusText.textContent = '未连接';
+            infoText.textContent = '已停止推流';
+
+            startBtn.innerHTML = '<i class="fa fa-play"></i> 开始捕获并推流';
+            startBtn.classList.remove('btn-danger');
+            startBtn.classList.add('btn-primary');
+            startBtn.onclick = startCapture;
+        }
+    </script>
+</body>
+</html>
+

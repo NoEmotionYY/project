@@ -1,6 +1,6 @@
-﻿/**
+/**
  * Node.js 鏍稿績鏈嶅姟
- * 鑱岃矗: WebRTC 鏀舵祦銆丷TSP 鎷夋祦銆佹娊甯с€丄I 鎶€鑳借皟鐢ㄣ€丼SE 鎺ㄩ€併€丠TTPS API
+ * 职责: WebRTC 收流、RTSP 拉流、抽帧、AI 技能调用、SSE 推送、HTTPS API
  */
 require('dotenv').config();
 
@@ -20,7 +20,7 @@ function requireProjectModule(name) {
   return fs.existsSync(localPath) ? require(`./${name}`) : require(`./src/${name}`);
 }
 
-// ========== 鍚姩璇婃柇鏃ュ織 ==========
+// ========== 启动诊断日志 ==========
 const LOG_DIR = process.env.LOG_DIR || path.join(PROJECT_ROOT, 'logs');
 const SERVER_LOG = path.join(LOG_DIR, 'server.log');
 try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch (_) {}
@@ -45,7 +45,7 @@ process.on('unhandledRejection', (reason) => {
   slog(`FATAL unhandledRejection: ${reason}`);
   process.exit(1);
 });
-// ========== 鍚姩璇婃柇鏃ュ織缁撴潫 ==========
+// ========== 启动诊断日志结束 ==========
 
 const sharp = require('sharp');
 const { RTCPeerConnection, RTCSessionDescription } = require('@roamhq/wrtc');
@@ -62,13 +62,13 @@ const {
 let FFMPEG_PATH;
 if (process.env.FFMPEG_PATH) {
   FFMPEG_PATH = process.env.FFMPEG_PATH;
-  console.log('[ffmpeg] 浣跨敤 .env FFMPEG_PATH:', FFMPEG_PATH);
+  console.log('[ffmpeg] 使用 .env FFMPEG_PATH:', FFMPEG_PATH);
 } else try {
   FFMPEG_PATH = require('@ffmpeg-installer/ffmpeg').path;
-  console.log('[ffmpeg] 浣跨敤 npm 鎹嗙粦璺緞:', FFMPEG_PATH);
+  console.log('[ffmpeg] 使用 npm 捆绑路径:', FFMPEG_PATH);
 } catch (e) {
-  FFMPEG_PATH = 'ffmpeg'; // 鍥為€€鍒扮郴缁?PATH
-  console.log('[ffmpeg] 浣跨敤绯荤粺 PATH 涓殑 ffmpeg');
+  FFMPEG_PATH = 'ffmpeg'; // 回退到系统 PATH
+  console.log('[ffmpeg] 使用系统 PATH 中的 ffmpeg');
 }
 
 // ==========================================
@@ -77,7 +77,7 @@ if (process.env.FFMPEG_PATH) {
 let PORT = parseInt(process.env.PORT || process.env.NODE_PORT, 10) || 8082;
 const ANALYSIS_INTERVAL = 1; // analysis interval seconds
 const LOG_FILE = path.join(process.env.LOG_DIR || __dirname, 'ai_analysis_log.txt');
-const CAMERA_LOG_DIR = path.join(PROJECT_ROOT, 'camera-logs'); // 姣忎釜鎽勫儚澶寸殑 JSON 鍒嗘瀽鏃ュ織
+const CAMERA_LOG_DIR = path.join(PROJECT_ROOT, 'camera-logs'); // 每个摄像头的 JSON 分析日志
 
 function safeName(input, fallback = 'default') {
   const safeFallback = String(fallback || 'default').replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
@@ -113,9 +113,9 @@ const {
 const PYTHON_BIN = process.env.PYTHON_PATH || process.env.PYTHON || 'python';
 
 // ==========================================
-// 鍔犺浇 AI 鎶€鑳斤紙閫氳繃鎶€鑳界鐞嗗櫒锛?// ==========================================
+// 加载 AI 技能（通过技能管理器）// ==========================================
 const skillManager = requireProjectModule('skill-manager');
-let aiSkill; // 鍚戝悗鍏煎锛屼繚鐣欏紩鐢?
+let aiSkill; // 向后兼容，保留引用
 // Ensure at least one default skill is enabled on startup.
 try {
   const defaultSkill = process.env.AI_SKILL || 'qwen-vl';
@@ -134,13 +134,13 @@ try {
   process.exit(1);
 }
 // ==========================================
-// 鍏ㄥ眬鐘舵€?// ==========================================
+// 全局状态// ==========================================
 let isAnalyzing = false;
 let activeCameraId = 'webrtc';  // current active camera
 let cameraIdCounter = 0;
 
 let aiResult = {
-  text: '绛夊緟鍒嗘瀽...',
+  text: '等待分析...',
   time: '',
   analyzing: false,
   alert: false,
@@ -162,7 +162,7 @@ const sseClients = new Map();
 const peerConnections = new Set();
 
 // ==========================================
-// 澶氭憚鍍忓ご绠＄悊
+// 多摄像头管理
 // ==========================================
 // cameras: Map<id, { id, type:'rtsp'|'webrtc', url, status, error, frameCount, latestJpeg, rtspProcess }>
 const cameras = new Map();
@@ -178,7 +178,7 @@ function sanitizeCameraLabel(input, fallback) {
 function normalizeRtspUrl(url) {
   const value = safeText(url);
   if (!/^rtsp:\/\//i.test(value)) {
-    throw new Error('闇€瑕佹湁鏁堢殑 RTSP 鍦板潃');
+    throw new Error('需要有效的 RTSP 地址');
   }
   return value;
 }
@@ -251,7 +251,7 @@ function persistCameraConfig() {
       }));
     writeCameraConfig(configured, activeCameraId);
   } catch (err) {
-    console.warn('[camera-config] 淇濆瓨澶辫触:', err.message);
+    console.warn('[camera-config] 保存失败:', err.message);
   }
 }
 
@@ -314,7 +314,7 @@ function stopRtspCamera(id) {
   cam.status = 'disconnected';
   cam.error = '';
   cam.frameCount = 0;
-  console.log(`[RTSP:${id}] 宸叉柇寮€`);
+  console.log(`[RTSP:${id}] 已断开`);
   notifyRtspStatus();
 }
 
@@ -331,7 +331,7 @@ function startRtspCamera(id, url) {
   cam.error = '';
   cam.frameCount = 0;
 
-  console.log(`[RTSP:${id}] 姝ｅ湪杩炴帴: ${maskCameraUrl(url)}`);
+  console.log(`[RTSP:${id}] 正在连接: ${maskCameraUrl(url)}`);
   notifyRtspStatus();
 
   const args = [
@@ -383,7 +383,7 @@ function startRtspCamera(id, url) {
         })
         .catch((err) => {
           if (cam.frameCount <= 3) {
-            console.error(`[RTSP:${id}] 甯ц浆鎹㈤敊璇?`, err.message);
+            console.error(`[RTSP:${id}] 帧转换错误`, err.message);
           }
         });
     }
@@ -395,20 +395,20 @@ function startRtspCamera(id, url) {
   });
 
   cam.rtspProcess.on('error', (err) => {
-    console.error(`[RTSP:${id}] ffmpeg 閿欒:`, err.message);
+    console.error(`[RTSP:${id}] ffmpeg 错误:`, err.message);
     cam.status = 'error';
-    cam.error = `ffmpeg 鍚姩澶辫触: ${err.message}`;
+    cam.error = `ffmpeg 启动失败: ${err.message}`;
     cam.rtspProcess = null;
     notifyRtspStatus();
   });
 
   cam.rtspProcess.on('exit', (code, signal) => {
-    console.log(`[RTSP:${id}] 閫€鍑?code=${code} signal=${signal}`);
+    console.log(`[RTSP:${id}] 退出code=${code} signal=${signal}`);
     if (cam.status === 'connecting' || cam.status === 'connected') {
       cam.status = 'error';
       cam.error = code !== 0
-        ? `ffmpeg 寮傚父閫€鍑?code=${code}): ${stderrBuffer.trim().split('\n').pop() || '鏈煡閿欒'}`
-        : '杩炴帴宸叉柇寮€';
+        ? `ffmpeg 异常退出code=${code}): ${stderrBuffer.trim().split('\n').pop() || '未知错误'}`
+        : '连接已断开';
     }
     cam.rtspProcess = null;
     notifyRtspStatus();
@@ -416,9 +416,9 @@ function startRtspCamera(id, url) {
 
   setTimeout(() => {
     if (cam.status === 'connecting') {
-      console.error(`[RTSP:${id}] 杩炴帴瓒呮椂锛?0绉掓棤甯э級`);
+      console.error(`[RTSP:${id}] 连接超时（30秒无帧）`);
       cam.status = 'error';
-      cam.error = '杩炴帴瓒呮椂锛岃妫€鏌?RTSP 鍦板潃鏄惁姝ｇ‘';
+      cam.error = '连接超时，请检查 RTSP 地址是否正确';
       stopRtspCamera(id);
       notifyRtspStatus();
     }
@@ -447,18 +447,18 @@ function getLanIps() {
         continue;
       }
 
-      // 鎺掗櫎铏氭嫙缃戝崱锛圴Mware銆丮ihomo VPN 绛夛級
+      // 排除虚拟网卡（VMware、Mihomo VPN 等）
       if (isVirtual) continue;
 
       // 鎺掗櫎鏃犳晥缃戞
       if (addr.startsWith('169.254.')) continue;               // APIPA
-      if (addr.startsWith('198.18.') || addr.startsWith('198.19.')) continue; // 娴嬭瘯/VPN 缃戞
+      if (addr.startsWith('198.18.') || addr.startsWith('198.19.')) continue; // 测试/VPN 网段
 
       if (!ips.includes(addr)) ips.push(addr);
     }
   }
 
-  // 鎺掑簭锛氱湡瀹炲眬鍩熺綉 IP 鍦ㄥ墠锛?27.0.0.1 鍦ㄥ悗
+  // 排序：真实局域网 IP 在前，127.0.0.1 在后
   ips.sort((a, b) => {
     const aIsLocal = a.startsWith('127.');
     const bIsLocal = b.startsWith('127.');
@@ -473,12 +473,12 @@ function getLanIps() {
 function writeLog(timestamp, result, isAlert = false, alertDetails = null) {
   const alertMark = isAlert ? ' [ALERT]' : '';
   let line = `[${timestamp}]${alertMark}\n`;
-  if (alertDetails?.length) line += `璀︽姤璇︽儏: ${alertDetails.join(', ')}\n`;
+  if (alertDetails?.length) line += `警报详情: ${alertDetails.join(', ')}\n`;
   line += `${result}\n${'-'.repeat(60)}\n`;
   fs.appendFileSync(LOG_FILE, line, 'utf-8');
 }
 
-// 姣忎釜鎽勫儚澶寸殑 JSON 鍒嗘瀽鏃ュ織锛氭寜鎽勫儚澶?ID 鍒嗙洰褰曪紝姣忓ぉ涓€涓?.jsonl 鏂囦欢
+// 每个摄像头的 JSON 分析日志：按摄像头 ID 分目录，每天一个 .jsonl 文件
 function writeCameraJsonLog(cameraId, result) {
   try {
     const camDir = path.join(CAMERA_LOG_DIR, cameraId);
@@ -488,11 +488,11 @@ function writeCameraJsonLog(cameraId, result) {
     const dateStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
     const logFile = path.join(camDir, `${dateStr}.jsonl`);
 
-    // 鎻愬彇姣忎釜鎶€鑳界殑鍘熷杩斿洖鏂囨湰
+    // 提取每个技能的原始返回文本
     const skillResults = (result._skillResults || []).map(r => ({
       skillId: r.skillId || r.id || 'unknown',
       skillLabel: r.skillLabel || 'unknown',
-      text: r.error ? `[閿欒] ${r.error}` : (r.result?.text || ''),
+      text: r.error ? `[错误] ${r.error}` : (r.result?.text || ''),
       alert: r.error ? false : (r.result?.alert || false),
       timeMs: r.timeMs || 0
     }));
@@ -509,16 +509,16 @@ function writeCameraJsonLog(cameraId, result) {
 
     fs.appendFileSync(logFile, JSON.stringify(entry) + '\n', 'utf-8');
   } catch (e) {
-    console.error('[鎽勫儚澶存棩蹇梋 鍐欏叆澶辫触:', e.message);
+    console.error('[摄像头日志] 写入失败:', e.message);
   }
 }
 
 // ==========================================
-// 瑙嗛褰曞埗绠＄悊
+// 视频录制管理
 // ==========================================
 const VIDEO_RECORD_DIR = resolveInside(PROJECT_ROOT, safeName(process.env.RECORDINGS_DIR || 'recordings', 'recordings'));
-const RECORD_FPS = 15;                 // 褰曞埗甯х巼
-const RECORD_SEGMENT_MIN = 10;         // 姣?10 鍒嗛挓鍒嗘涓€涓枃浠?const RECORD_MIN_INTERVAL_MS = 1000 / RECORD_FPS; // 鍐欏叆甯ф渶灏忛棿闅?
+const RECORD_FPS = 15;                 // 录制甯х巼
+const RECORD_SEGMENT_MIN = 10;         // 每 10 分钟分段一个文件const RECORD_MIN_INTERVAL_MS = 1000 / RECORD_FPS; // 鍐欏叆甯ф渶灏忛棿闅?
 const videoRecorders = new Map(); // camId -> { process, filePath, startTime, lastWriteTime }
 
 function getRecordingCamId(camId) {
@@ -555,7 +555,7 @@ function getVideoFilePath(camId) {
 
 function startVideoRecording(camId) {
   const recordingCamId = getRecordingCamId(camId);
-  // 濡傛灉宸插湪褰曞埗锛屽厛鍋滄鏃х殑
+  // 濡傛灉宸插湪录制锛屽厛鍋滄鏃х殑
   stopVideoRecording(recordingCamId);
 
   const filePath = getVideoFilePath(recordingCamId);
@@ -570,7 +570,7 @@ function startVideoRecording(camId) {
     '-pix_fmt', 'yuv420p',
     '-preset', 'ultrafast',
     '-crf', '28',
-    // MKV 鏄祦寮忓鍣紝涓嶉渶瑕?movflags锛岃繘绋嬭 kill 涔熻兘姝ｅ父鎾斁
+    // MKV 是流式容器，不需要 movflags，进程被 kill 也能正常播放
     filePath
   ];
 
@@ -580,12 +580,12 @@ function startVideoRecording(camId) {
   });
 
   proc.on('error', (err) => {
-    console.error(`[褰曞埗:${recordingCamId}] FFmpeg 鍚姩澶辫触:`, err.message);
+    console.error(`[录制:${recordingCamId}] FFmpeg 启动失败:`, err.message);
   });
 
   proc.on('close', (code) => {
     if (code !== 0 && code !== null) {
-      console.error(`[褰曞埗:${recordingCamId}] FFmpeg 寮傚父閫€鍑?code=${code}`);
+      console.error(`[录制:${recordingCamId}] FFmpeg 异常退出code=${code}`);
     }
   });
 
@@ -596,7 +596,7 @@ function startVideoRecording(camId) {
     lastWriteTime: 0
   };
   videoRecorders.set(recordingCamId, recorder);
-  console.log(`[褰曞埗:${recordingCamId}] 寮€濮嬪綍鍒?-> ${filePath}`);
+  console.log(`[录制:${recordingCamId}] 开始录制-> ${filePath}`);
   return { cameraId: recordingCamId, filePath };
 }
 
@@ -611,7 +611,7 @@ function stopVideoRecording(camId) {
     recorder.process.stdin.end();
   } catch (e) {}
 
-  // 缁?FFmpeg 鏈€澶?10 绉掕嚜鐒跺畬鎴愮紪鐮佸拰鍐欏叆 moov锛屼笉瑕佹彁鍓?kill
+  // 给 FFmpeg 最多 10 秒自然完成编码和写入 moov，不要提前 kill
   const timer = setTimeout(() => {
     try {
       if (recorder.process && !recorder.process.killed) {
@@ -624,7 +624,7 @@ function stopVideoRecording(camId) {
     clearTimeout(timer);
   });
 
-  console.log(`[褰曞埗:${recordingCamId}] 鍋滄褰曞埗`);
+  console.log(`[录制:${recordingCamId}] 鍋滄录制`);
 }
 
 function writeVideoFrame(camId, jpegBuffer) {
@@ -642,11 +642,11 @@ function writeVideoFrame(camId, jpegBuffer) {
   if (now - recorder.lastWriteTime < RECORD_MIN_INTERVAL_MS) return false;
   recorder.lastWriteTime = now;
 
-  // 鍐欏叆甯э紝澶勭悊 backpressure
+  // 写入帧，处理 backpressure
   if (recorder.process.stdin.writableEnded || recorder.process.stdin.destroyed) return false;
   const ok = recorder.process.stdin.write(jpegBuffer);
   if (!ok) {
-    // 缂撳啿鍖烘弧锛岀瓑 drain 鍚庡啀鎭㈠锛屼絾杩欓噷鐩存帴璺宠繃鏈抚鍗冲彲
+    // 缓冲区满，等 drain 后再恢复，但这里直接跳过本帧即可
     recorder.process.stdin.once('drain', () => {});
   }
   return ok;
@@ -723,7 +723,7 @@ function handleAlertQueryError(res, err) {
 }
 
 // ==========================================
-// 瑙嗛甯у鐞?(WebRTC)
+// 视频帧处理 (WebRTC)
 // ==========================================
 let frameCount = 0;
 let webrtcInstanceId = 0;
@@ -834,7 +834,7 @@ async function processVideoTrack(track, pc, camId) {
   console.log(`[视频:${camId}] track processing ended`);
 }
 // ==========================================
-// AI 瀹氭椂鍒嗘瀽
+// AI 定时分析
 // ==========================================
 setInterval(async () => {
   const frameJpeg = getLatestFrameJpeg();
@@ -883,7 +883,7 @@ setInterval(async () => {
       time: timeStr,
       analyzing: false,
       alert: result.alert,
-      alert_message: result.alert ? `妫€娴嬪埌瀹夊叏椋庨櫓: ${result.alert_details.join('; ')}` : '',
+      alert_message: result.alert ? `检测到安全风险: ${result.alert_details.join('; ')}` : '',
       alert_details: result.alert_details || [],
       voice_reminder: result.voice_reminder || false,
       voice_text: result.voice_text || '',
@@ -904,7 +904,7 @@ setInterval(async () => {
     writeCameraJsonLog(activeCameraId, result);
     broadcastSSE(aiResult);
 
-    console.log(`[AI鍒嗘瀽鎴愬姛] ${timeStr}, 鑰楁椂 ${Date.now() - startTime}ms`);
+    console.log(`[AI分析成功] ${timeStr}, 耗时 ${Date.now() - startTime}ms`);
   } catch (e) {
     const errMsg = `鍒嗘瀽寮傚父: ${e.message}`;
     const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
@@ -953,7 +953,7 @@ app.post('/api/skills/install-path', rejectWebSkillInstallation);
 
 app.use(express.json({ limit: '50mb' }));
 
-// CORS锛氭敮鎸?nginx 鐙珛閮ㄧ讲鐨勫墠绔法鍩熻闂?// 濡傞渶闄愬埗鐗瑰畾鍩熷悕锛岃缃幆澧冨彉閲?CORS_ORIGIN=https://your-nginx-domain.com
+// CORS：支持 nginx 独立部署的前端跨域访问// 如需限制特定域名，设置环境变量CORS_ORIGIN=https://your-nginx-domain.com
 app.use((req, res, next) => {
   const allowedOrigin = process.env.CORS_ORIGIN || '*';
   res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
@@ -1013,12 +1013,12 @@ app.get('/test', (req, res) => {
   res.sendFile(path.join(htmlDir, 'test-capture.html'));
 });
 
-// WebRTC 淇′护
+// WebRTC 信令
 app.post('/offer', async (req, res) => {
   try {
     webrtcInstanceId++;
     const camId = `webrtc-${webrtcInstanceId}`;
-    console.log(`[淇′护] 鏀跺埌鍓嶇 offer #${webrtcInstanceId}, 鍒嗛厤鎽勫儚澶? ${camId}`);
+    console.log(`[信令] 收到前端 offer #${webrtcInstanceId}, 分配摄像头 ${camId}`);
     const { sdp, type, label } = req.body;
     const offer = new RTCSessionDescription({ sdp, type });
 
@@ -1033,10 +1033,10 @@ app.post('/offer', async (req, res) => {
     cam.label = camLabel;
     cameras.set(camId, cam);
     activeCameraId = camId;
-    console.log(`[淇′护] 宸叉敞鍐屾憚鍍忓ご: ${camId}`);
+    console.log(`[信令] 宸叉敞鍐屾憚鍍忓ご: ${camId}`);
 
     pc.addEventListener('connectionstatechange', () => {
-      console.log(`[WebRTC:${camId}] 杩炴帴鐘舵€?`, pc.connectionState);
+      console.log(`[WebRTC:${camId}] 连接状态`, pc.connectionState);
       if (['failed', 'closed'].includes(pc.connectionState)) {
         pc.close();
         peerConnections.delete(pc);
@@ -1051,7 +1051,7 @@ app.post('/offer', async (req, res) => {
     });
 
     pc.addEventListener('icegatheringstatechange', () => {
-      console.log(`[WebRTC:${camId}] ICE 鏀堕泦鐘舵€?`, pc.iceGatheringState);
+      console.log(`[WebRTC:${camId}] ICE 收集状态`, pc.iceGatheringState);
     });
 
     pc.addEventListener('track', (event) => {
@@ -1063,17 +1063,17 @@ app.post('/offer', async (req, res) => {
     });
 
     await pc.setRemoteDescription(offer);
-    console.log('[淇′护] setRemoteDescription 鎴愬姛');
+    console.log('[信令] setRemoteDescription 成功');
 
     const answer = await pc.createAnswer();
-    console.log('[淇′护] createAnswer 鎴愬姛');
+    console.log('[信令] createAnswer 成功');
 
     await pc.setLocalDescription(answer);
-    console.log('[淇′护] setLocalDescription 鎴愬姛, ICE 鐘舵€?', pc.iceGatheringState);
+    console.log('[信令] setLocalDescription 成功, ICE 状态', pc.iceGatheringState);
 
-    // 绛夊緟 ICE gathering 瀹屾垚锛岀‘淇?answer 鍖呭惈瀹屾暣鐨?candidates
+    // 等待 ICE gathering 完成，确保 answer 包含完整的 candidates
     if (pc.iceGatheringState !== 'complete') {
-      console.log('[淇′护] 绛夊緟 ICE candidates 鏀堕泦...');
+      console.log('[信令] 绛夊緟 ICE candidates 鏀堕泦...');
       await new Promise((resolve) => {
         let resolved = false;
 
@@ -1088,26 +1088,26 @@ app.post('/offer', async (req, res) => {
 
         pc.addEventListener('icegatheringstatechange', onIceComplete);
 
-        // 5 绉掑厹搴曪細鍗充娇娌℃敹鍒?complete锛屼篃杩斿洖宸叉湁 candidates
+        // 5 秒兜底：即使没收到 complete，也返回已有 candidates
         const timer = setTimeout(() => {
           if (!resolved) {
             resolved = true;
             pc.removeEventListener('icegatheringstatechange', onIceComplete);
-            console.log('[淇′护] ICE 鏀堕泦瓒呮椂锛屼娇鐢ㄥ凡鏀堕泦 candidates');
+            console.log('[信令] ICE 鏀堕泦瓒呮椂锛屼娇鐢ㄥ凡鏀堕泦 candidates');
             resolve();
           }
         }, 5000);
       });
     }
 
-    console.log('[淇′护] 杩斿洖 answer, candidates 宸插寘鍚?', pc.localDescription.sdp.includes('candidate'));
+    console.log('[信令] 返回 answer, candidates 已包含', pc.localDescription.sdp.includes('candidate'));
 
     res.json({
       sdp: pc.localDescription.sdp,
       type: pc.localDescription.type
     });
   } catch (e) {
-    console.error('[淇′护] 閿欒:', e.message);
+    console.error('[信令] 错误:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -1219,15 +1219,15 @@ app.get('/api/alerts/:id', async (req, res) => {
   }
 });
 
-// 娴嬭瘯椤甸潰锛氫笂浼犲浘鐗囧尯鍩熻繘琛?AI 鍒嗘瀽
+// 测试页面：上传图片区域进行 AI 分析
 app.post('/api/test-analyze', async (req, res) => {
   try {
     const { imageBase64 } = req.body;
     if (!imageBase64) {
-      return res.status(400).json({ error: '缂哄皯 imageBase64 鍙傛暟' });
+      return res.status(400).json({ error: '缺少 imageBase64 参数' });
     }
 
-    console.log('[娴嬭瘯鍒嗘瀽] 鏀跺埌鍥剧墖锛屽紑濮嬭皟鐢?AI 鎶€鑳?..');
+    console.log('[测试分析] 收到图片，开始调用 AI 技能...');
     const startTime = Date.now();
     const result = await skillManager.analyzeAll(imageBase64, {
       type: 'analyze',
@@ -1235,11 +1235,11 @@ app.post('/api/test-analyze', async (req, res) => {
       timestamp: Date.now(),
       ...getSkillConfigContext()
     });
-    console.log(`[娴嬭瘯鍒嗘瀽] 瀹屾垚锛岃€楁椂 ${Date.now() - startTime}ms`);
+    console.log(`[测试分析] 完成锛岃€楁椂 ${Date.now() - startTime}ms`);
 
     res.json(result);
   } catch (e) {
-    console.error('[娴嬭瘯鍒嗘瀽] 閿欒:', e.message);
+    console.error('[测试分析] 错误:', e.message);
     res.status(500).json({ error: e.message, text: '鍒嗘瀽寮傚父: ' + e.message, alert: false, alert_details: [] });
   }
 });
@@ -1266,7 +1266,7 @@ app.get('/api/events', (req, res) => {
 });
 
 // ==========================================
-// 澶氭憚鍍忓ご绠＄悊 API
+// 多摄像头管理 API
 // ==========================================
 app.get('/api/cameras', (req, res) => {
   res.json({
@@ -1380,11 +1380,11 @@ app.post('/api/cameras/active', (req, res) => {
 });
 
 // ==========================================
-// RTSP 鎷夋祦绠＄悊锛堟棫鐗堝吋瀹?- 鎿嶄綔鍥哄畾 camera 鎴?webrtc 鎽勫儚澶达級
+// RTSP 拉流管理（旧版兼容 - 操作固定 camera 或 webrtc 摄像头）
 // ==========================================
 
 /**
- * 鏃х増鍏煎 - 鍚姩 RTSP 娴侊紙瑕嗙洊 webrtc 鎽勫儚澶翠负 rtsp 妯″紡锛? */
+ * 旧版兼容 - 启动 RTSP 流（覆盖 webrtc 摄像头为 rtsp 模式） */
 function startRtspStream(url) {
   const cam = getCamera('webrtc');
   if (cam) {
@@ -1439,19 +1439,19 @@ function notifyRtspStatus() {
   }
 }
 
-// RTSP API 璺敱锛堟棫鐗堝吋瀹癸級
+// RTSP API 路由（旧版兼容）
 app.post('/api/rtsp/start', (req, res) => {
   const { url } = req.body;
   if (!url || !url.startsWith('rtsp://')) {
     return res.status(400).json({ error: 'Invalid RTSP URL. Must start with rtsp://' });
   }
   startRtspStream(url);
-  res.json({ success: true, message: '姝ｅ湪杩炴帴 RTSP 娴?..', ...getRtspInfo() });
+  res.json({ success: true, message: '正在连接 RTSP 流...', ...getRtspInfo() });
 });
 
 app.post('/api/rtsp/stop', (req, res) => {
   stopRtspStream();
-  res.json({ success: true, message: 'RTSP 娴佸凡鏂紑', ...getRtspInfo() });
+  res.json({ success: true, message: 'RTSP 流已断开', ...getRtspInfo() });
 });
 
 app.get('/api/rtsp/status', (req, res) => {
@@ -1473,7 +1473,7 @@ app.get('/api/info', (req, res) => {
 });
 
 // ==========================================
-// 鎶€鑳界鐞?API (v2 - 澶氭妧鑳?+ 寮€鍏?+ 鏂囦欢鍔犺浇)
+// 技能管理 API (v2 - 多技能 + 开关 + 文件加载)
 // ==========================================
 
 // Get all skill states.
@@ -1488,15 +1488,15 @@ app.get('/api/skills', (req, res) => {
   }
 });
 
-// 鍒囨崲鎶€鑳藉惎鐢?绂佺敤
+// 切换技能启用/禁用
 app.post('/api/skills/toggle', (req, res) => {
   try {
     const { skill, enabled } = req.body;
     if (!skill) {
-      return res.status(400).json({ error: '缂哄皯 skill 鍙傛暟' });
+      return res.status(400).json({ error: '缺少 skill 参数' });
     }
     if (typeof enabled !== 'boolean') {
-      return res.status(400).json({ error: '缂哄皯 enabled 鍙傛暟 (boolean)' });
+      return res.status(400).json({ error: '缺少 enabled 参数 (boolean)' });
     }
     const result = skillManager.toggleSkill(skill, enabled);
     res.json({
@@ -1514,7 +1514,7 @@ app.post('/api/skills/load', (req, res) => {
   try {
     const { skill } = req.body;
     if (!skill) {
-      return res.status(400).json({ error: '缂哄皯 skill 鍙傛暟' });
+      return res.status(400).json({ error: '缺少 skill 参数' });
     }
     const all = skillManager.getSkillsStatus();
     for (const p of all) {
@@ -1532,19 +1532,19 @@ app.post('/api/skills/load', (req, res) => {
 });
 
 // ==========================================
-// 褰曞埗绠＄悊 API
+// 录制绠＄悊 API
 // ==========================================
 
-// 鎵弿褰曞埗鐩綍锛岃繑鍥炴墍鏈夋憚鍍忓ご锛堝惈褰曞埗鏂囦欢涓庣姸鎬侊級
+// 扫描录制目录，返回所有摄像头（含录制文件与状态）
 function getRecordingList() {
   const result = [];
   const allCamIds = new Set();
 
-  // 1. 鏀堕泦鎵€鏈夊凡鐭ユ憚鍍忓ご
+  // 1. 收集所有已知摄像头
   for (const [id, cam] of cameras) {
     allCamIds.add(id);
   }
-  // 2. 鏀堕泦鏈夊綍鍒舵枃浠剁殑鎽勫儚澶达紙鍗充娇宸插垹闄わ級
+  // 2. 收集有录制文件的摄像头（即使已删除）
   if (fs.existsSync(VIDEO_RECORD_DIR)) {
     for (const camId of fs.readdirSync(VIDEO_RECORD_DIR)) {
       allCamIds.add(getRecordingCamId(camId));
@@ -1595,14 +1595,14 @@ app.post('/api/recordings/:id/start', (req, res) => {
   res.json({ success: true, cameraId: result.cameraId, isRecording: true });
 });
 
-// 鍋滄褰曞埗
+// 鍋滄录制
 app.post('/api/recordings/:id/stop', (req, res) => {
   const id = getRecordingCamId(req.params.id);
   stopVideoRecording(id);
   res.json({ success: true, cameraId: id, isRecording: false });
 });
 
-// 鍒犻櫎褰曞埗鏂囦欢
+// 删除录制文件
 app.delete('/api/recordings/:camId/:fileName', (req, res) => {
   const { camId, fileName } = req.params;
   let filePath;
@@ -1623,7 +1623,7 @@ app.delete('/api/recordings/:camId/:fileName', (req, res) => {
   }
 });
 
-// 鎻愪緵褰曞埗鏂囦欢涓嬭浇/鎾斁锛堢洿鎺ヨ鍙栨枃浠讹級
+// 提供录制文件下载/播放（直接读取文件）
 app.get('/api/recordings/:camId/:fileName', (req, res) => {
   const { camId, fileName } = req.params;
   let filePath;
@@ -1736,7 +1736,7 @@ async function startServer() {
 
 startServer();
 
-// 鐩戝惉鏉ヨ嚜 Electron 涓昏繘绋嬬殑 IPC 娑堟伅锛堝綋閫氳繃 fork 鍚姩鏃讹級
+// 监听来自 Electron 主进程的 IPC 消息（当通过 fork 启动时）
 if (process.send) {
   process.on('message', (msg) => {
     if (!msg || !msg.type) return;
