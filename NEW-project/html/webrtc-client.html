@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#0a0a0a">
-    <title>AI 鎽勫儚澶存帹娴佺</title>
+    <title>AI 摄像头推流端</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
@@ -210,7 +210,7 @@
             margin-right: 6px;
         }
 
-        /* 褰曞埗鎸囩ず鍣?*/
+        /* 录制指示器 */
         .rec-indicator {
             position: absolute;
             top: 16px;
@@ -243,7 +243,7 @@
             50% { opacity: 0; }
         }
 
-        /* 绔栧睆鏃惰棰戞柟鍚戜紭鍖?*/
+        /* 竖屏时视频方向优化 */
         @media (orientation: portrait) {
             video {
                 object-fit: cover;
@@ -267,7 +267,7 @@
             }
         }
 
-        /* 闃叉 iOS Safari 搴曢儴鏍忓奖鍝?*/
+        /* 防止 iOS Safari 底部栏影响 */
         @supports (-webkit-touch-callout: none) {
             body {
                 height: -webkit-fill-available;
@@ -279,11 +279,11 @@
     <header>
         <div class="logo">
             <i class="fa-solid fa-camera"></i>
-            <span>AI 鎽勫儚澶存帹娴?/span>
+            <span>AI 摄像头推流</span>
         </div>
         <div class="status-badge" id="status-badge">
             <span class="pulse-dot"></span>
-            <span id="status-text">鏈繛鎺?/span>
+            <span id="status-text">未连接</span>
         </div>
     </header>
 
@@ -295,23 +295,23 @@
         <video id="video" autoplay playsinline muted></video>
         <div class="placeholder" id="placeholder">
             <i class="fa-solid fa-video-slash"></i>
-            <p>鎽勫儚澶存湭鍚姩</p>
-            <p class="hint">鐐瑰嚮涓嬫柟鎸夐挳寮€濮嬫帹娴?/p>
+            <p>摄像头未启动</p>
+            <p class="hint">点击下方按钮开始推流</p>
         </div>
     </div>
 
     <div class="info-panel">
         <i class="fa-solid fa-circle-info"></i>
-        <span id="info-text">鍑嗗灏辩华锛岀瓑寰呰繛鎺?..</span>
+        <span id="info-text">准备就绪，等待连接...</span>
     </div>
     <div class="info-panel" style="border-top: 1px solid #333;">
         <i class="fa-solid fa-network-wired"></i>
-        <span id="server-info">姝ｅ湪鑾峰彇鏈嶅姟鍣ㄤ俊鎭?..</span>
+        <span id="server-info">正在获取服务器信息...</span>
     </div>
 
     <div class="controls">
         <button class="btn btn-primary" id="startBtn" onclick="startWebRTC()">
-            <i class="fa-solid fa-play"></i> 寮€濮嬫帹娴?        </button>
+            <i class="fa-solid fa-play"></i> 开始推流 </button>
     </div>
 
     <script>

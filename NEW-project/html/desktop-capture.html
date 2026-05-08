@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>妗岄潰鎹曡幏鎺ㄦ祦 - 鐪熻鐪艰皟璇曞伐鍏?/title>
+    <title>桌面捕获推流 - 真視眼调试工具</title>
     <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -161,36 +161,36 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1><i class="fa fa-desktop"></i> 妗岄潰鎹曡幏鎺ㄦ祦</h1>
-            <p>灏嗗睆骞曘€佺獥鍙ｆ垨娴忚鍣ㄦ爣绛鹃〉浣滀负璋冭瘯鎽勫儚澶存帹閫佸埌鐩戞帶绯荤粺</p>
+            <h1><i class="fa fa-desktop"></i> 桌面捕获推流</h1>
+            <p>将屏幕、窗口或浏览器标签页作为调试摄像头推送到监控系统</p>
         </div>
         <div class="card">
             <div class="preview-area" id="preview-area">
                 <div class="preview-placeholder" id="placeholder">
                     <i class="fa fa-desktop"></i>
-                    <div>鐐瑰嚮寮€濮嬫崟鑾蜂互閫夋嫨灞忓箷婧?/div>
+                    <div>点击开始捕获以选择屏幕源</div>
                 </div>
                 <video id="preview-video" autoplay playsinline muted style="display:none;"></video>
-                <div class="rec-badge" id="rec-badge"><i class="fa fa-circle"></i> 鎺ㄦ祦涓?/div>
+                <div class="rec-badge" id="rec-badge"><i class="fa fa-circle"></i> 推流中</div>
             </div>
 
             <div class="status-bar">
                 <div class="status-dot" id="status-dot"></div>
-                <span class="status-text" id="status-text">鏈繛鎺?/span>
-                <span class="info-text" id="info-text">鍑嗗灏辩华</span>
+                <span class="status-text" id="status-text">未连接</span>
+                <span class="info-text" id="info-text">准备就绪</span>
             </div>
 
             <button class="btn btn-primary" id="start-btn" onclick="startCapture()">
-                <i class="fa fa-play"></i> 寮€濮嬫崟鑾峰苟鎺ㄦ祦
+                <i class="fa fa-play"></i> 开始捕获并推流
             </button>
 
             <div class="tips">
                 <h3><i class="fa fa-lightbulb-o"></i> 浣跨敤鎻愮ず</h3>
                 <ul>
-                    <li>鎹曡幏鐨勬闈㈢敾闈細娉ㄥ唽涓恒€屾闈㈡崟鑾枫€嶆憚鍍忓ご锛屽彲鍦?monitor 闈㈡澘鍒囨崲鏌ョ湅</li>
-                    <li>閫夋嫨銆屾暣涓睆骞曘€嶅彲鎹曡幏鍏ㄥ睆锛岄€夋嫨銆岀獥鍙ｃ€嶅彲鎹曡幏鍗曚釜搴旂敤</li>
-                    <li>鎺ㄦ祦鍚庣敾闈細瀹炴椂浼犺緭鍒板悗绔紝AI 鎶€鑳戒細瀵瑰叾杩涜鍒嗘瀽</li>
-                    <li>鍋滄鎺ㄦ祦鍚庢憚鍍忓ご浼氳嚜鍔ㄦ柇寮€锛屽彲鍦?monitor 涓垹闄?/li>
+                    <li>捕获的桌面画面会注册为「桌面捕获」摄像头，可在 monitor 面板切换查看</li>
+                    <li>选择「整个屏幕」可捕获全屏，选择「窗口」可捕获单个应用</li>
+                    <li>推流后画面会实时传输到后端，AI 技能会对其进行分析</li>
+                    <li>停止推流后摄像头会自动断开，可在 monitor 中删除</li>
                 </ul>
             </div>
         </div>
