@@ -265,7 +265,7 @@
           <strong>实时画面</strong>
           <div class="meta">使用 CYPHER 当前帧接口刷新，不启用 MJPEG 链路。</div>
         </div>
-        <div class="status"><span id="sse-dot" class="dot"></span><span id="sse-status">SSE 鏈繛鎺?/span></div>
+        <div class="status"><span id="sse-dot" class="dot"></span><span id="sse-status">SSE 未连接</span></div>
       </div>
       <div class="video-wrap">
         <img id="video-frame" alt="当前摄像头画面">
@@ -399,7 +399,7 @@
           <span class="badge">${severityText(item.severity)}</span>
         </div>
         <div class="meta">摄像头：${escapeHtml(item.camera)}</div>
-        <div class="meta">缃俊搴︼細${escapeHtml(confidenceText(item.confidence))} / 类型：${escapeHtml(item.type || '-')}</div>
+        <div class="meta">置信度：${escapeHtml(confidenceText(item.confidence))} / 类型：${escapeHtml(item.type || '-')}</div>
         <div class="meta">时间：${escapeHtml(item.time)} ${snapshotLink}</div>
       `;
       alertFeed.prepend(card);
