@@ -265,7 +265,7 @@
           <strong>实时画面</strong>
           <div class="meta">使用 CYPHER 当前帧接口刷新，不启用 MJPEG 链路。</div>
         </div>
-        <div class="status"><span id="sse-dot" class="dot"></span><span id="sse-status">SSE 未连接</span></div>
+        <div class="status"><span id="sse-dot" class="dot"></span><span id="sse-status">SSE 鏈繛鎺?/span></div>
       </div>
       <div class="video-wrap">
         <img id="video-frame" alt="当前摄像头画面">
@@ -328,108 +328,161 @@
     const seenAlerts = new Set();
     const alertFeed = document.getElementById('alert-feed');
     const analysisContent = document.getElementById('analysis-content');
+    const analysisStatus = document.getElementById('analysis-status');
+    const analysisTime = document.getElementById('analysis-time');
     const skillModal = document.getElementById('skill-modal');
     const skillModalBody = document.getElementById('skill-modal-body');
 
     function escapeHtml(value) {
-      return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[char]));
+    }
+
+    function severityClass(value) {
+      const normalized = String(value || '').toLowerCase();
+      if (normalized === 'critical' || normalized === 'danger') return 'critical';
+      if (normalized === 'warning') return 'warning';
+      return 'info';
     }
 
     function severityText(value) {
-      const level = String(value || '').toLowerCase();
-      if (['critical', 'danger', 'high'].includes(level)) return '高危';
-      if (level === 'warning') return '警告';
+      const normalized = String(value || '').toLowerCase();
+      if (normalized === 'critical' || normalized === 'danger') return '高危';
+      if (normalized === 'warning') return '警告';
       return '信息';
     }
 
-    function formatConfidence(value) {
-      const n = Number(value);
-      if (!Number.isFinite(n)) return '-';
-      return Math.round(n * 100) + '%';
+    function confidenceText(value) {
+      const number = Number(value);
+      return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : 'N/A';
     }
 
-    function normalizeAlerts(data) {
-      const alerts = Array.isArray(data.alerts) ? data.alerts : [];
-      if (alerts.length) return alerts;
-      if (data.alert || data.alert_message || data.risk_level) {
-        return [{
-          id: data.id,
-          title: data.alert_message || 'AI 告警',
-          category_cn: data.alert_details?.[0] || data.alert_message || '风险提示',
-          severity: data.risk_level || 'warning',
-          confidence: data.confidence,
-          cameraId: data.cameraId,
-          camera_id: data.camera_id,
-          created_at: data.timestamp || data.time
-        }];
-      }
-      return [];
+    function timeText(value) {
+      if (!value) return new Date().toLocaleTimeString('zh-CN', { hour12: false });
+      if (typeof value === 'number') return new Date(value).toLocaleString('zh-CN', { hour12: false });
+      return String(value);
+    }
+
+    function alertId(alert) {
+      return alert.eventId || alert.id || `${alert.type || alert.title}-${alert.cameraId || alert.camera_id}-${alert.timestamp || Date.now()}`;
+    }
+
+    function normalizeAlert(alert) {
+      const id = alertId(alert);
+      return {
+        id,
+        title: alert.title || alert.categoryCn || alert.category_cn || alert.name || alert.type || '告警事件',
+        severity: alert.severity || 'info',
+        camera: alert.cameraLabel || alert.camera_label || alert.cameraId || alert.camera_id || 'active',
+        confidence: alert.confidence,
+        time: alert.created_at || alert.timestamp || new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+        type: alert.type || alert.alert_type || alert.category,
+        snapshot: alert.snapshotPath || alert.snapshot_path || '',
+        eventId: alert.eventId || alert.id
+      };
     }
 
     function pushAlert(alert) {
-      const key = alert.id || [alert.type, alert.title, alert.cameraId || alert.camera_id, alert.created_at || alert.timestamp].join('|');
-      if (seenAlerts.has(key)) return;
-      seenAlerts.add(key);
-      const empty = document.getElementById('empty-feed');
-      if (empty) empty.remove();
-      const card = document.createElement('article');
-      card.className = 'alert-card';
-      const title = alert.title || alert.category_cn || alert.type || 'AI 告警';
-      const camera = alert.camera_label || alert.cameraId || alert.camera_id || 'unknown';
-      const time = alert.created_at || alert.timestamp || new Date().toLocaleTimeString('zh-CN', { hour12: false });
-      const snapshot = alert.id ? `<a href="/api/alerts/${encodeURIComponent(alert.id)}/snapshot" target="_blank" rel="noreferrer">查看快照</a>` : '';
+      const item = normalizeAlert(alert);
+      if (seenAlerts.has(item.id)) return;
+      seenAlerts.add(item.id);
+      document.getElementById('empty-feed')?.remove();
+      const severity = severityClass(item.severity);
+      const card = document.createElement('div');
+      card.className = `alert-card ${severity}`;
+      card.dataset.created = String(Date.now());
+      const snapshotLink = item.eventId ? `<a href="/api/alerts/${encodeURIComponent(item.eventId)}/snapshot" target="_blank">查看快照</a>` : '';
       card.innerHTML = `
-        <div class="alert-title">${escapeHtml(title)}</div>
-        <div class="meta">${escapeHtml(severityText(alert.severity))} / ${escapeHtml(camera)} / ${escapeHtml(formatConfidence(alert.confidence))}</div>
-        <div class="meta">${escapeHtml(time)} ${snapshot}</div>
+        <div class="alert-top">
+          <div class="title">${escapeHtml(item.title)}</div>
+          <span class="badge">${severityText(item.severity)}</span>
+        </div>
+        <div class="meta">摄像头：${escapeHtml(item.camera)}</div>
+        <div class="meta">缃俊搴︼細${escapeHtml(confidenceText(item.confidence))} / 类型：${escapeHtml(item.type || '-')}</div>
+        <div class="meta">时间：${escapeHtml(item.time)} ${snapshotLink}</div>
       `;
       alertFeed.prepend(card);
-      while (alertFeed.children.length > 20) alertFeed.lastElementChild.remove();
+      while (alertFeed.querySelectorAll('.alert-card').length > 20) {
+        alertFeed.lastElementChild.remove();
+      }
+    }
+
+    function pushLegacyAlert(data) {
+      if (!data.alert) return;
+      const details = Array.isArray(data.alert_details) ? data.alert_details : [data.alert_message || '检测到风险'];
+      for (const detail of details) {
+        pushAlert({
+          title: detail,
+          severity: data.risk_level === 'high' ? 'critical' : 'warning',
+          cameraId: activeCameraId || 'active',
+          confidence: null,
+          timestamp: data.time
+        });
+      }
     }
 
     function handleRealtimePayload(data) {
-      normalizeAlerts(data).forEach(pushAlert);
+      const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+      if (alerts.length) alerts.forEach(pushAlert);
+      else pushLegacyAlert(data);
     }
 
     function updateAnalysisDisplay(data) {
-      const status = document.getElementById('analysis-status');
-      const time = document.getElementById('analysis-time');
-      status.textContent = data.analyzing ? '分析中' : '已更新';
-      time.textContent = data.time || new Date().toLocaleTimeString('zh-CN', { hour12: false });
-      const parts = [];
-      if (data.text) parts.push(`<p>${escapeHtml(data.text)}</p>`);
-      if (Array.isArray(data.alert_details) && data.alert_details.length) {
-        parts.push('<p><strong>风险详情：</strong>' + data.alert_details.map(escapeHtml).join('；') + '</p>');
-      }
       const alerts = Array.isArray(data.alerts) ? data.alerts : [];
       const detections = Array.isArray(data.detections) ? data.detections : [];
-      if (alerts.length) parts.push('<p><strong>告警：</strong>' + alerts.map(item => escapeHtml(item.category_cn || item.title || item.type)).join('；') + '</p>');
-      if (detections.length) parts.push('<p><strong>检测：</strong>' + detections.map(item => escapeHtml(item.name || item.label)).join('；') + '</p>');
-      if (data.risk_level) parts.push('<p><strong>风险等级：</strong>' + escapeHtml(severityText(data.risk_level)) + '</p>');
-      analysisContent.innerHTML = parts.join('') || '等待摄像头帧或 AI 分析结果。';
+      const details = Array.isArray(data.alert_details) ? data.alert_details : [];
+      const risk = data.risk_level || (alerts.length ? 'high' : 'none');
+      const status = data.analyzing ? '分析中' : (alerts.length || data.alert ? '发现风险' : '正常/等待');
+      const lines = [];
+
+      if (data.text) lines.push(String(data.text));
+      if (data.alert_message) lines.push(`告警：${data.alert_message}`);
+      if (details.length) lines.push(`风险详情：${details.join('、')}`);
+      if (alerts.length) {
+        lines.push(`结构化告警：${alerts.map(item => item.title || item.name || item.type || item.alert_type).filter(Boolean).join('、')}`);
+      }
+      if (detections.length) {
+        lines.push(`检测目标：${detections.map(item => {
+          const label = item.name || item.label || item.type || 'unknown';
+          const confidence = Number.isFinite(Number(item.confidence)) ? ` ${confidenceText(item.confidence)}` : '';
+          return `${label}${confidence}`;
+        }).join('、')}`);
+      }
+      if (data.cleanup_hint) lines.push(`处置建议：${data.cleanup_hint}`);
+      if (data.evacuate_text) lines.push(`疏散提示：${data.evacuate_text}`);
+      if (!lines.length) lines.push(data.analyzing ? 'AI 正在分析当前画面...' : '等待摄像头帧或 AI 分析结果。');
+
+      analysisStatus.textContent = `状态：${status} / 风险：${risk}`;
+      analysisTime.textContent = `更新时间：${timeText(data.time || data.timestamp)}`;
+      analysisContent.innerHTML = `
+        <div>${escapeHtml(lines.join('\n'))}</div>
+        <div class="analysis-tags">
+          <span class="analysis-tag">alerts: ${alerts.length}</span>
+          <span class="analysis-tag">detections: ${detections.length}</span>
+          <span class="analysis-tag">fallback: /api/analysis 3秒</span>
+        </div>
+      `;
+    }
+
+    function setSseStatus(text, state) {
+      document.getElementById('sse-status').textContent = text;
+      const dot = document.getElementById('sse-dot');
+      dot.className = `dot ${state || ''}`;
     }
 
     function connectSse() {
-      const dot = document.getElementById('sse-dot');
-      const label = document.getElementById('sse-status');
       if (eventSource) eventSource.close();
       eventSource = new EventSource('/api/events');
-      eventSource.onopen = () => {
-        dot.classList.add('on');
-        label.textContent = 'SSE 已连接';
-      };
+      eventSource.onopen = () => setSseStatus('SSE 已连接', 'ok');
+      eventSource.onerror = () => setSseStatus('SSE 重连中', 'warn');
       eventSource.onmessage = event => {
         try {
           const data = JSON.parse(event.data);
           handleRealtimePayload(data);
           updateAnalysisDisplay(data);
-        } catch (error) {
-          console.warn('SSE payload parse failed:', error.message);
         }
-      };
-      eventSource.onerror = () => {
-        dot.classList.remove('on');
-        label.textContent = 'SSE 断开，使用轮询兜底';
+        catch (error) { console.warn('SSE payload parse failed:', error.message); }
       };
     }
 
@@ -465,7 +518,6 @@
       };
       image.src = `${frameEndpoint()}?t=${Date.now()}`;
     }
-
     function renderCameras() {
       const list = document.getElementById('camera-list');
       if (!cameras.length) {
@@ -489,7 +541,6 @@
       const active = cameras.find(camera => camera.id === activeCameraId);
       document.getElementById('active-camera-label').textContent = active ? (active.label || active.id) : activeCameraId;
     }
-
     async function loadCameras() {
       try {
         const response = await fetch('/api/cameras', { cache: 'no-store' });
@@ -497,8 +548,12 @@
         cameras = data.cameras || [];
         const hasActive = cameras.some(camera => camera.id === activeCameraId);
         const frameCamera = cameras.find(camera => camera.hasFrame);
-        if (!activeCameraId || !hasActive) activeCameraId = data.active || frameCamera?.id || cameras[0]?.id || 'active';
-        if ((activeCameraId === 'webrtc' || activeCameraId === 'active') && frameCamera) activeCameraId = frameCamera.id;
+        if (!activeCameraId || !hasActive) {
+          activeCameraId = data.active || frameCamera?.id || cameras[0]?.id || 'active';
+        }
+        if ((activeCameraId === 'webrtc' || activeCameraId === 'active') && frameCamera) {
+          activeCameraId = frameCamera.id;
+        }
         renderCameras();
       } catch (error) {
         cameras = [];
@@ -506,6 +561,10 @@
         renderCameras();
       }
     }
+    document.getElementById('clear-alerts').addEventListener('click', () => {
+      alertFeed.innerHTML = '<div class="empty" id="empty-feed">暂无实时告警</div>';
+      seenAlerts.clear();
+    });
 
     function openSkillModal() {
       skillModal.hidden = false;
@@ -518,7 +577,9 @@
 
     function setSkillTab(nextTab) {
       skillTab = nextTab;
-      document.querySelectorAll('.skill-tab').forEach(tab => tab.setAttribute('aria-selected', tab.dataset.tab === skillTab ? 'true' : 'false'));
+      document.querySelectorAll('.skill-tab').forEach(tab => {
+        tab.setAttribute('aria-selected', tab.dataset.tab === skillTab ? 'true' : 'false');
+      });
       renderSkills();
     }
 
@@ -527,6 +588,7 @@
       try {
         const response = await fetch('/api/skills', { cache: 'no-store' });
         const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '读取技能失败');
         skillItems = Array.isArray(data.skills) ? data.skills : [];
         renderSkills();
       } catch (error) {
@@ -535,22 +597,26 @@
     }
 
     function renderSkillRow(skill) {
-      const id = skill.id || skill.name || '';
       const label = skill.label || skill.name || skill.id || '未命名技能';
+      const type = skill.type || 'unknown';
+      const description = skill.description || '暂无描述';
       const enabled = skill.enabled === true;
       const nextEnabled = !enabled;
-      const action = nextEnabled ? '启用' : '禁用';
+      const action = enabled ? '禁用' : '启用';
       return `
         <div class="skill-row">
           <div class="skill-row-top">
             <div>
               <strong>${escapeHtml(label)}</strong>
-              <div class="meta">${escapeHtml(id || '-')} / ${escapeHtml(skill.type || 'unknown')} / ${enabled ? '已启用' : '未启用'}</div>
-              <div class="meta">${escapeHtml(skill.description || '暂无描述')}</div>
+              <div class="meta">${escapeHtml(skill.id || skill.name || '-')} / ${escapeHtml(type)} / ${enabled ? '已启用' : '未启用'}</div>
             </div>
-            <div class="skill-row-actions"><button type="button" data-skill-toggle="${escapeHtml(id)}" data-enabled="${String(nextEnabled)}">${action}</button></div>
+            <div class="skill-row-actions">
+              <button type="button" data-skill-toggle="${escapeHtml(skill.id || skill.name)}" data-enabled="${String(nextEnabled)}">${action}</button>
+            </div>
           </div>
-        </div>`;
+          <div class="meta">${escapeHtml(description)}</div>
+        </div>
+      `;
     }
 
     function renderSkills() {
@@ -559,9 +625,10 @@
           <div class="safety-note">
             <strong>安全说明</strong><br>
             Web 技能安装已禁用。页面不支持上传新技能。新技能必须通过受控本地部署流程加入。安装不等于启用；只有用户在这里明确启用后，技能才会参与 AI 分析。
-          </div>`;
+        `;
         return;
       }
+
       const rows = skillTab === 'enabled' ? skillItems.filter(skill => skill.enabled === true) : skillItems;
       if (!rows.length) {
         skillModalBody.innerHTML = `<div class="empty">${skillTab === 'enabled' ? '暂无已启用技能' : '暂无技能'}</div>`;
@@ -587,23 +654,23 @@
         if (!response.ok || data.success === false) throw new Error(data.error || '切换技能失败');
         await loadSkills();
       } catch (error) {
-        alert('技能切换失败：' + error.message);
+        alert(`技能切换失败：${error.message}`);
       }
     }
 
-    document.getElementById('clear-alerts').addEventListener('click', () => {
-      alertFeed.innerHTML = '<div class="empty" id="empty-feed">暂无实时告警</div>';
-      seenAlerts.clear();
-    });
     document.getElementById('skill-manager-open').addEventListener('click', openSkillModal);
     document.getElementById('skill-modal-close').addEventListener('click', closeSkillModal);
     document.getElementById('skill-modal-close-bottom').addEventListener('click', closeSkillModal);
     document.getElementById('skill-refresh').addEventListener('click', loadSkills);
-    document.querySelectorAll('.skill-tab').forEach(tab => tab.addEventListener('click', () => setSkillTab(tab.dataset.tab)));
-    skillModal.addEventListener('click', event => { if (event.target === skillModal) closeSkillModal(); });
+    document.querySelectorAll('.skill-tab').forEach(tab => {
+      tab.addEventListener('click', () => setSkillTab(tab.dataset.tab));
+    });
+    skillModal.addEventListener('click', event => {
+      if (event.target === skillModal) closeSkillModal();
+    });
 
-    connectSse();
     loadCameras();
+    connectSse();
     pollAnalysis();
     refreshFrame();
     setInterval(loadCameras, 10000);
@@ -612,5 +679,4 @@
   </script>
 </body>
 </html>
-
 
