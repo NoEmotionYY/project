@@ -14,10 +14,12 @@ const MODEL_PROFILE_NAMES = ['default', 'ppe', 'fire'];
 const WRITABLE_CONFIG_FIELDS = [
   'thresholds',
   'confirmFrames',
+  'confirmWindowMs',
   'cooldowns',
   'modelProfile',
   'qwenReview',
-  'analysisIntervalMs'
+  'analysisIntervalMs',
+  'inference'
 ];
 
 const MODEL_PROFILES = {
@@ -41,6 +43,12 @@ const DEFAULT_DETECTION_CONFIG = {
     fire: 2,
     smoke: 2
   },
+  confirmWindowMs: {
+    'no-helmet': 3000,
+    'no-vest': 3000,
+    fire: 2000,
+    smoke: 2000
+  },
   cooldowns: {
     'no-helmet': 5,
     'no-vest': 5,
@@ -49,7 +57,12 @@ const DEFAULT_DETECTION_CONFIG = {
   },
   modelProfile: 'default',
   qwenReview: false,
-  analysisIntervalMs: 1000
+  analysisIntervalMs: 10000,
+  inference: {
+    imgsz: 640,
+    device: '',
+    half: false
+  }
 };
 
 function clone(value) {
@@ -83,6 +96,25 @@ function envBoolean(env, name, fallback) {
   return ['1', 'true', 'yes', 'on'].includes(String(raw).trim().toLowerCase());
 }
 
+function parseBoolean(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (value === undefined || value === null || value === '') return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+}
+
+function sanitizeDevice(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  // 支持 cpu、0、0,1、cuda:0 等常见写法，过滤 shell 特殊字符。
+  return text.replace(/[^a-zA-Z0-9:.,_-]/g, '').slice(0, 32);
+}
+
+function parseIntegerRange(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
 function buildDefaultDetectionConfig(env = process.env) {
   const config = clone(DEFAULT_DETECTION_CONFIG);
   const defaultThreshold = envNumber(env, 'CYPHER_YOLO_CONF_DEFAULT', config.thresholds.helmet);
@@ -99,6 +131,11 @@ function buildDefaultDetectionConfig(env = process.env) {
   config.confirmFrames.fire = envInteger(env, 'CYPHER_ALERT_CONFIRM_FIRE', config.confirmFrames.fire);
   config.confirmFrames.smoke = envInteger(env, 'CYPHER_ALERT_CONFIRM_SMOKE', config.confirmFrames.smoke);
 
+  config.confirmWindowMs['no-helmet'] = envInteger(env, 'CYPHER_ALERT_CONFIRM_WINDOW_NO_HELMET_MS', config.confirmWindowMs['no-helmet']);
+  config.confirmWindowMs['no-vest'] = envInteger(env, 'CYPHER_ALERT_CONFIRM_WINDOW_NO_VEST_MS', config.confirmWindowMs['no-vest']);
+  config.confirmWindowMs.fire = envInteger(env, 'CYPHER_ALERT_CONFIRM_WINDOW_FIRE_MS', config.confirmWindowMs.fire);
+  config.confirmWindowMs.smoke = envInteger(env, 'CYPHER_ALERT_CONFIRM_WINDOW_SMOKE_MS', config.confirmWindowMs.smoke);
+
   const ppeCooldown = envNumber(env, 'CYPHER_ALERT_COOLDOWN_SECONDS', config.cooldowns['no-helmet']);
   const fireCooldown = envNumber(env, 'CYPHER_FIRE_ALERT_COOLDOWN_SECONDS', config.cooldowns.fire);
   config.cooldowns['no-helmet'] = ppeCooldown;
@@ -106,6 +143,11 @@ function buildDefaultDetectionConfig(env = process.env) {
   config.cooldowns.fire = fireCooldown;
   config.cooldowns.smoke = fireCooldown;
   config.qwenReview = envBoolean(env, 'CYPHER_ENABLE_QWEN_REVIEW', config.qwenReview);
+
+  config.analysisIntervalMs = envInteger(env, 'CYPHER_ANALYSIS_INTERVAL_MS', config.analysisIntervalMs);
+  config.inference.imgsz = envInteger(env, 'CYPHER_YOLO_IMGSZ', config.inference.imgsz);
+  config.inference.device = sanitizeDevice(env.CYPHER_YOLO_DEVICE ?? config.inference.device);
+  config.inference.half = envBoolean(env, 'CYPHER_YOLO_HALF', config.inference.half);
 
   return sanitizeDetectionConfigForResponse(config);
 }
@@ -151,6 +193,19 @@ function validateDetectionConfig(input) {
     }
   }
 
+  if (input.confirmWindowMs !== undefined) {
+    ensurePlainObject(input.confirmWindowMs, 'confirmWindowMs');
+    normalized.confirmWindowMs = {};
+    for (const [key, value] of Object.entries(input.confirmWindowMs)) {
+      if (!ALERT_LABELS.includes(key)) throw new Error(`Invalid confirmWindowMs ${key}`);
+      const parsed = Number(value);
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 60000) {
+        throw new Error(`Invalid confirmWindowMs ${key}`);
+      }
+      normalized.confirmWindowMs[key] = parsed;
+    }
+  }
+
   if (input.cooldowns !== undefined) {
     ensurePlainObject(input.cooldowns, 'cooldowns');
     normalized.cooldowns = {};
@@ -180,10 +235,32 @@ function validateDetectionConfig(input) {
 
   if (input.analysisIntervalMs !== undefined) {
     const parsed = Number(input.analysisIntervalMs);
-    if (!Number.isInteger(parsed) || parsed < 500 || parsed > 10000) {
+    if (!Number.isInteger(parsed) || parsed < 500 || parsed > 60000) {
       throw new Error('Invalid analysisIntervalMs');
     }
     normalized.analysisIntervalMs = parsed;
+  }
+
+  if (input.inference !== undefined) {
+    ensurePlainObject(input.inference, 'inference');
+    const inference = {};
+    if (input.inference.imgsz !== undefined) {
+      const parsed = Number(input.inference.imgsz);
+      if (!Number.isInteger(parsed) || parsed < 160 || parsed > 1920) {
+        throw new Error('Invalid inference.imgsz');
+      }
+      inference.imgsz = parsed;
+    }
+    if (input.inference.device !== undefined) {
+      inference.device = sanitizeDevice(input.inference.device);
+    }
+    if (input.inference.half !== undefined) {
+      if (typeof input.inference.half !== 'boolean') {
+        throw new Error('Invalid inference.half');
+      }
+      inference.half = input.inference.half;
+    }
+    normalized.inference = inference;
   }
 
   return normalized;
@@ -200,8 +277,14 @@ function mergeDetectionConfig(base, override) {
   if (normalized.confirmFrames) {
     config.confirmFrames = { ...config.confirmFrames, ...normalized.confirmFrames };
   }
+  if (normalized.confirmWindowMs) {
+    config.confirmWindowMs = { ...config.confirmWindowMs, ...normalized.confirmWindowMs };
+  }
   if (normalized.cooldowns) {
     config.cooldowns = { ...config.cooldowns, ...normalized.cooldowns };
+  }
+  if (normalized.inference) {
+    config.inference = { ...config.inference, ...normalized.inference };
   }
   for (const key of ['modelProfile', 'qwenReview', 'analysisIntervalMs']) {
     if (normalized[key] !== undefined) config[key] = normalized[key];
@@ -210,14 +293,21 @@ function mergeDetectionConfig(base, override) {
 }
 
 function sanitizeDetectionConfigForResponse(config) {
-  const result = clone({
-    thresholds: config.thresholds,
-    confirmFrames: config.confirmFrames,
-    cooldowns: config.cooldowns,
-    modelProfile: config.modelProfile,
-    qwenReview: config.qwenReview,
-    analysisIntervalMs: config.analysisIntervalMs
-  });
+  const source = {
+    thresholds: { ...DEFAULT_DETECTION_CONFIG.thresholds, ...(config.thresholds || {}) },
+    confirmFrames: { ...DEFAULT_DETECTION_CONFIG.confirmFrames, ...(config.confirmFrames || {}) },
+    confirmWindowMs: { ...DEFAULT_DETECTION_CONFIG.confirmWindowMs, ...(config.confirmWindowMs || {}) },
+    cooldowns: { ...DEFAULT_DETECTION_CONFIG.cooldowns, ...(config.cooldowns || {}) },
+    modelProfile: MODEL_PROFILE_NAMES.includes(config.modelProfile) ? config.modelProfile : DEFAULT_DETECTION_CONFIG.modelProfile,
+    qwenReview: Boolean(config.qwenReview),
+    analysisIntervalMs: parseIntegerRange(config.analysisIntervalMs, DEFAULT_DETECTION_CONFIG.analysisIntervalMs, 500, 60000),
+    inference: {
+      imgsz: parseIntegerRange(config.inference?.imgsz, DEFAULT_DETECTION_CONFIG.inference.imgsz, 160, 1920),
+      device: sanitizeDevice(config.inference?.device ?? DEFAULT_DETECTION_CONFIG.inference.device),
+      half: parseBoolean(config.inference?.half, DEFAULT_DETECTION_CONFIG.inference.half)
+    }
+  };
+  const result = clone(source);
   result.modelProfiles = clone(MODEL_PROFILES);
   return result;
 }
@@ -226,10 +316,12 @@ function configWithoutReadOnlyFields(config) {
   return {
     thresholds: clone(config.thresholds),
     confirmFrames: clone(config.confirmFrames),
+    confirmWindowMs: clone(config.confirmWindowMs),
     cooldowns: clone(config.cooldowns),
     modelProfile: config.modelProfile,
     qwenReview: config.qwenReview,
-    analysisIntervalMs: config.analysisIntervalMs
+    analysisIntervalMs: config.analysisIntervalMs,
+    inference: clone(config.inference)
   };
 }
 
@@ -266,10 +358,12 @@ function buildSkillConfigContext(config) {
     thresholds: clone(safeConfig.thresholds),
     confirmFrames: clone(safeConfig.confirmFrames),
     confirmCounts: clone(safeConfig.confirmFrames),
+    confirmWindowMs: clone(safeConfig.confirmWindowMs),
     cooldowns: clone(safeConfig.cooldowns),
     modelProfile: safeConfig.modelProfile,
     qwenReview: safeConfig.qwenReview,
-    analysisIntervalMs: safeConfig.analysisIntervalMs
+    analysisIntervalMs: safeConfig.analysisIntervalMs,
+    inference: clone(safeConfig.inference)
   };
   return {
     config: skillConfig,

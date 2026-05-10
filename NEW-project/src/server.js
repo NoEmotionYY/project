@@ -2,7 +2,7 @@
  * Node.js 核心服务
  * 职责: WebRTC 收流、RTSP 拉流、抽帧、AI 技能调用、SSE 推送、HTTPS API
  */
-require('dotenv').config({ quiet: true });
+require('dotenv').config();
 
 const express = require('express');
 const https = require('https');
@@ -75,9 +75,11 @@ if (process.env.FFMPEG_PATH) {
 // 配置
 // ==========================================
 let PORT = parseInt(process.env.PORT || process.env.NODE_PORT, 10) || 8082;
-const ANALYSIS_TICK_MS = 500; // 分析调度检查频率；真实分析间隔由 detection-config.json 的 analysisIntervalMs 控制
+const ANALYSIS_INTERVAL = 1; // analysis interval seconds
 const LOG_FILE = path.join(process.env.LOG_DIR || __dirname, 'ai_analysis_log.txt');
 const CAMERA_LOG_DIR = path.join(PROJECT_ROOT, 'camera-logs'); // 每个摄像头的 JSON 分析日志
+const RUNTIME_FRAME_DIR = resolveInside(PROJECT_ROOT, 'data', 'runtime-frames'); // 传给 Python 技能的当前帧文件
+const ANALYZE_TIMEOUT_MS = Number(process.env.CYPHER_ANALYZE_TIMEOUT_MS || 30000);
 
 function safeName(input, fallback = 'default') {
   const safeFallback = String(fallback || 'default').replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
@@ -113,22 +115,25 @@ const {
 const PYTHON_BIN = process.env.PYTHON_PATH || process.env.PYTHON || 'python';
 
 // ==========================================
-// 加载 AI 技能（通过技能管理器）
-// ==========================================
+// 加载 AI 技能（通过技能管理器）// ==========================================
 const skillManager = requireProjectModule('skill-manager');
 let aiSkill; // 向后兼容，保留引用
-
-// 不再默认启用任何技能。
-// 技能是否参与分析完全由 skills-state.json 和 /api/skills/toggle 控制。
+// Ensure at least one default skill is enabled on startup.
 try {
+  const defaultSkill = process.env.AI_SKILL || 'qwen-vl';
   const status = skillManager.getSkillsStatus();
-  const enabledCount = status.filter(p => p.enabled).length;
-  console.log(`[技能] 当前启用 ${enabledCount} / ${status.length} 个技能`);
+  const hasEnabled = status.some(p => p.enabled);
+
+  if (!hasEnabled) {
+    skillManager.toggleSkill(defaultSkill, true);
+    console.log(`[技能] 默认启用: ${defaultSkill}`);
+  } else {
+    console.log(`[技能] 已启用 ${status.filter(p => p.enabled).length} 个技能`);
+  }
   aiSkill = skillManager;
 } catch (e) {
   console.error('[技能] 初始化失败:', e.message);
-  // 技能初始化失败不应导致摄像头和页面服务整体退出。
-  aiSkill = null;
+  process.exit(1);
 }
 // ==========================================
 // 全局状态// ==========================================
@@ -510,6 +515,25 @@ function writeCameraJsonLog(cameraId, result) {
   }
 }
 
+
+function writeRuntimeFrame(cameraId, jpegBuffer) {
+  const safeCamId = safeName(cameraId || 'active', 'active');
+  if (!fs.existsSync(RUNTIME_FRAME_DIR)) {
+    fs.mkdirSync(RUNTIME_FRAME_DIR, { recursive: true });
+  }
+  const absPath = resolveInside(RUNTIME_FRAME_DIR, `${safeCamId}.jpg`);
+  fs.writeFileSync(absPath, jpegBuffer);
+  return path.relative(PROJECT_ROOT, absPath).replace(/\\/g, '/');
+}
+
+function shouldUseFramePathOnly(enabledSkills) {
+  if (!Array.isArray(enabledSkills) || enabledSkills.length === 0) return false;
+  return enabledSkills.every(skill => {
+    const id = skill.id || skill.name;
+    return id === 'yolo-safety';
+  });
+}
+
 // ==========================================
 // 视频录制管理
 // ==========================================
@@ -669,58 +693,6 @@ function getDetectionConfig() {
 
 function getSkillConfigContext() {
   return buildSkillConfigContext(getDetectionConfig());
-}
-
-function getAnalysisIntervalMs(config = getDetectionConfig()) {
-  const raw = Number(config.analysisIntervalMs);
-  if (!Number.isFinite(raw)) return 3000;
-  return Math.max(500, Math.min(10000, Math.floor(raw)));
-}
-
-function getEnabledAnalysisSkills() {
-  try {
-    return skillManager.getEnabledSkills ? skillManager.getEnabledSkills() : skillManager.getSkillsStatus().filter(skill => skill.enabled === true);
-  } catch (err) {
-    console.error('[技能] 读取启用技能失败:', err.message);
-    return [];
-  }
-}
-
-function hasEnabledAnalysisSkills() {
-  try {
-    return skillManager.hasEnabledSkills ? skillManager.hasEnabledSkills() : getEnabledAnalysisSkills().length > 0;
-  } catch (_) {
-    return false;
-  }
-}
-
-function updateAnalysisPausedState(reason) {
-  const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-  if (!aiResult.analyzing && aiResult.text === reason) return;
-
-  aiResult = {
-    ...aiResult,
-    text: reason,
-    time: timeStr,
-    analyzing: false,
-    alert: false,
-    alert_message: '',
-    alert_details: [],
-    voice_reminder: false,
-    voice_text: '',
-    voice_texts: [],
-    risk_level: 'none',
-    cleanup_hint: '',
-    evacuate_reminder: false,
-    evacuate_text: '',
-    beep_count: 0,
-    damage_voice_text: '',
-    damage_alert_details: [],
-    damage_beep_count: 0,
-    alerts: [],
-    detections: []
-  };
-  broadcastSSE(aiResult);
 }
 
 function runAlertQuery(action, payload = {}) {
@@ -883,122 +855,138 @@ async function processVideoTrack(track, pc, camId) {
   pc.removeEventListener('connectionstatechange', onStateChange);
   console.log(`[视频:${camId}] track processing ended`);
 }
+// ==========================================// AI 定时分析
 // ==========================================
-// AI 定时分析
-// ==========================================
-let lastAnalysisAt = 0;
+let lastPausedReason = '';
 
-setInterval(async () => {
-  const frameJpeg = getLatestFrameJpeg();
-  if (!frameJpeg || isAnalyzing) return;
-
-  const config = getDetectionConfig();
-  const intervalMs = getAnalysisIntervalMs(config);
-  const nowMs = Date.now();
-
-  if (nowMs - lastAnalysisAt < intervalMs) return;
-
-  const enabledSkills = getEnabledAnalysisSkills();
-  if (!enabledSkills.length) {
-    updateAnalysisPausedState('未启用 AI 技能，已暂停分析。摄像头拉流仍会继续，画面预览不受影响。');
-    return;
-  }
-
-  lastAnalysisAt = nowMs;
-  isAnalyzing = true;
-  const frameCopy = Buffer.from(frameJpeg);
-  const startTime = Date.now();
-
-  aiResult = {
-    ...aiResult,
-    analyzing: true,
-    text: `正在分析当前画面... 已启用技能 ${enabledSkills.length} 个`,
-    time: new Date().toLocaleTimeString('zh-CN', { hour12: false })
-  };
-  broadcastSSE(aiResult);
-
+async function runAnalysisTick() {
   try {
-    const base64 = frameCopy.toString('base64');
+    const frameJpeg = getLatestFrameJpeg();
+    if (!frameJpeg || isAnalyzing) return;
 
-    const ANALYZE_TIMEOUT = 5000;
-    const activeCam = getActiveCamera();
-    const skillConfigContext = buildSkillConfigContext(config);
-    const analysisContext = {
-      type: 'analyze',
-      cameraId: activeCameraId,
-      cameraLabel: activeCam ? (activeCam.label || maskCameraUrl(activeCam.url) || activeCameraId) : activeCameraId,
-      timestamp: Date.now(),
-      ...skillConfigContext
-    };
+    const config = getDetectionConfig();
+    const enabledSkills = getEnabledAnalysisSkills();
 
-    const result = await Promise.race([
-      skillManager.analyzeAll(base64, analysisContext),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Analysis timed out after 5 seconds')), ANALYZE_TIMEOUT)
-      )
-    ]);
+    if (!enabledSkills.length) {
+      const message = '未启用 AI 技能，已暂停分析。摄像头拉流仍会继续，画面预览不受影响。';
+      if (lastPausedReason !== message) {
+        lastPausedReason = message;
+        updateAnalysisPausedState(message);
+        console.log('[AI分析暂停] 未启用 AI 技能');
+      } else {
+        updateAnalysisPausedState(message);
+      }
+      return;
+    }
 
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('zh-CN', { hour12: false });
-    const timestamp = now.toISOString().replace('T', ' ').slice(0, 19);
-
-    aiResult = {
-      text: result.text,
-      time: timeStr,
-      analyzing: false,
-      alert: result.alert,
-      alert_message: result.alert ? `检测到安全风险: ${(result.alert_details || []).join('; ')}` : '',
-      alert_details: result.alert_details || [],
-      voice_reminder: result.voice_reminder || false,
-      voice_text: result.voice_text || '',
-      voice_texts: result.voice_texts || [],
-      risk_level: result.risk_level || 'none',
-      cleanup_hint: result.cleanup_hint || '',
-      evacuate_reminder: result.evacuate_reminder || false,
-      evacuate_text: result.evacuate_text || '',
-      beep_count: result.beep_count || 0,
-      damage_voice_text: result.damage_voice_text || '',
-      damage_alert_details: result.damage_alert_details || [],
-      damage_beep_count: result.damage_beep_count || 0,
-      alerts: result.alerts || [],
-      detections: result.detections || []
-    };
-
-    writeLog(timestamp, result.text, result.alert, result.alert_details || []);
-    writeCameraJsonLog(activeCameraId, result);
-    broadcastSSE(aiResult);
-
-    console.log(`[AI分析成功] ${timeStr}, 启用技能 ${enabledSkills.length} 个, 耗时 ${Date.now() - startTime}ms`);
-  } catch (e) {
-    const errMsg = `分析异常: ${e.message}`;
-    const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-    const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    lastPausedReason = '';
+    isAnalyzing = true;
+    const frameCopy = Buffer.from(frameJpeg);
+    const startTime = Date.now();
 
     aiResult = {
       ...aiResult,
-      text: errMsg,
-      analyzing: false,
-      time: timeStr,
-      voice_reminder: false,
-      voice_text: '',
-      voice_texts: [],
-      risk_level: 'none',
-      cleanup_hint: '',
-      evacuate_reminder: false,
-      evacuate_text: '',
-      beep_count: 0,
-      alerts: [],
-      detections: []
+      analyzing: true,
+      text: `正在分析当前画面... 已启用技能 ${enabledSkills.length} 个`,
+      time: new Date().toLocaleTimeString('zh-CN', { hour12: false })
     };
-
-    writeLog(timestamp, errMsg);
-    writeCameraJsonLog(activeCameraId, { text: errMsg, alert: false, alert_details: [], risk_level: 'none', _skillResults: [] });
     broadcastSSE(aiResult);
-    console.error('[AI分析异常]', e.message);
+
+    try {
+      const activeCam = getActiveCamera();
+      const skillConfigContext = buildSkillConfigContext(config);
+      let framePath = '';
+      try {
+        framePath = writeRuntimeFrame(activeCameraId, frameCopy);
+      } catch (err) {
+        console.warn('[analysis] 写入 runtime frame 失败，回退 base64:', err.message);
+      }
+
+      const useFramePathOnly = Boolean(framePath) && shouldUseFramePathOnly(enabledSkills);
+      const base64 = useFramePathOnly ? '' : frameCopy.toString('base64');
+
+      const analysisContext = {
+        type: 'analyze',
+        cameraId: activeCameraId,
+        cameraLabel: activeCam ? (activeCam.label || maskCameraUrl(activeCam.url) || activeCameraId) : activeCameraId,
+        timestamp: Date.now(),
+        framePath,
+        ...skillConfigContext
+      };
+
+      const result = await Promise.race([
+        skillManager.analyzeAll(base64, analysisContext),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`Analysis timed out after ${ANALYZE_TIMEOUT_MS}ms`)), ANALYZE_TIMEOUT_MS)
+        )
+      ]);
+
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('zh-CN', { hour12: false });
+      const timestamp = now.toISOString().replace('T', ' ').slice(0, 19);
+
+      aiResult = {
+        text: result.text,
+        time: timeStr,
+        analyzing: false,
+        alert: result.alert,
+        alert_message: result.alert ? `检测到安全风险: ${(result.alert_details || []).join('; ')}` : '',
+        alert_details: result.alert_details || [],
+        voice_reminder: result.voice_reminder || false,
+        voice_text: result.voice_text || '',
+        voice_texts: result.voice_texts || [],
+        risk_level: result.risk_level || 'none',
+        cleanup_hint: result.cleanup_hint || '',
+        evacuate_reminder: result.evacuate_reminder || false,
+        evacuate_text: result.evacuate_text || '',
+        beep_count: result.beep_count || 0,
+        damage_voice_text: result.damage_voice_text || '',
+        damage_alert_details: result.damage_alert_details || [],
+        damage_beep_count: result.damage_beep_count || 0,
+        alerts: result.alerts || [],
+        detections: result.detections || []
+      };
+
+      writeLog(timestamp, result.text, result.alert, result.alert_details || []);
+      writeCameraJsonLog(activeCameraId, result);
+      broadcastSSE(aiResult);
+
+      console.log(`[分析成功] ${timeStr}, 启用技能 ${enabledSkills.length} 个, ${useFramePathOnly ? 'framePath' : 'base64'}, 耗时 ${Date.now() - startTime}ms`);
+    } catch (e) {
+      const errMsg = `分析异常: ${e.message}`;
+      const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+      const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+      aiResult = {
+        ...aiResult,
+        text: errMsg,
+        analyzing: false,
+        time: timeStr,
+        voice_reminder: false,
+        voice_text: '',
+        voice_texts: [],
+        risk_level: 'none',
+        cleanup_hint: '',
+        evacuate_reminder: false,
+        evacuate_text: '',
+        beep_count: 0,
+        alerts: [],
+        detections: []
+      };
+
+      writeLog(timestamp, errMsg);
+      writeCameraJsonLog(activeCameraId, { text: errMsg, alert: false, alert_details: [], risk_level: 'none', _skillResults: [] });
+      broadcastSSE(aiResult);
+      console.error('[分析异常]', e.message);
+    } finally {
+      isAnalyzing = false;
+    }
   } finally {
-    isAnalyzing = false;
+    setTimeout(runAnalysisTick, getAnalysisIntervalMs());
   }
-}, ANALYSIS_TICK_MS);
+}
+
+setTimeout(runAnalysisTick, 1000);
 
 // ==========================================
 // Express 应用
@@ -1289,25 +1277,6 @@ app.post('/api/test-analyze', async (req, res) => {
     const { imageBase64 } = req.body;
     if (!imageBase64) {
       return res.status(400).json({ error: '缺少 imageBase64 参数' });
-    }
-
-    if (!hasEnabledAnalysisSkills()) {
-      return res.json({
-        text: '未启用 AI 技能，测试分析已跳过',
-        alert: false,
-        alert_details: [],
-        voice_reminder: false,
-        voice_text: '',
-        voice_texts: [],
-        risk_level: 'none',
-        cleanup_hint: '',
-        evacuate_reminder: false,
-        evacuate_text: '',
-        beep_count: 0,
-        alerts: [],
-        detections: [],
-        _skillResults: []
-      });
     }
 
     console.log('[测试分析] 收到图片，开始调用 AI 技能...');

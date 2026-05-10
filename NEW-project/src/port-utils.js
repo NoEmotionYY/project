@@ -32,7 +32,7 @@ function checkPortAvailableDual(port) {
   });
 }
 
-async function findAvailablePort(startPort, maxTry = 10) {
+async function findAvailablePort(startPort, maxTry = 100) {
   for (let i = 0; i < maxTry; i++) {
     const port = startPort + i;
     if (await checkPortAvailableDual(port)) {

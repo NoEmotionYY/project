@@ -47,7 +47,7 @@
   <main>
     <section class="panel">
       <h1>YOLO 检测治理配置</h1>
-      <p class="hint">本页只保存阈值、连续确认、冷却时间、模型 profile、Qwen 低频复核标记和分析间隔；不会接收 API Key、任意模型路径、快照目录或数据库路径。注意：当所有技能均为 disabled 时，后端会自动暂停 AI 分析循环，只保留摄像头拉流与画面预览。</p>
+      <p class="hint">本页只保存阈值、连续确认、确认时间窗口、冷却时间、模型 profile、YOLO 推理参数、Qwen 低频复核标记和分析间隔；不会接收 API Key、任意模型路径、快照目录或数据库路径。</p>
 
       <form id="config-form">
         <div class="section">
@@ -73,6 +73,17 @@
         </div>
 
         <div class="section">
+          <h2>确认时间窗口 ms</h2>
+          <p class="hint">0 表示沿用连续分析次数模式；大于 0 表示在该时间窗口内命中指定次数即可确认告警。</p>
+          <div class="grid two">
+            <label>no-helmet <input id="window-no-helmet" type="number" min="0" max="60000" step="100"></label>
+            <label>no-vest <input id="window-no-vest" type="number" min="0" max="60000" step="100"></label>
+            <label>fire <input id="window-fire" type="number" min="0" max="60000" step="100"></label>
+            <label>smoke <input id="window-smoke" type="number" min="0" max="60000" step="100"></label>
+          </div>
+        </div>
+
+        <div class="section">
           <h2>告警冷却秒数</h2>
           <div class="grid two">
             <label>no-helmet <input id="cooldown-no-helmet" type="number" min="0" max="3600" step="1"></label>
@@ -92,7 +103,7 @@
                 <option value="fire">fire</option>
               </select>
             </label>
-            <label>分析间隔 ms（仅启用技能时生效） <input id="analysis-interval" type="number" min="500" max="10000" step="100"></label>
+            <label>分析间隔 ms <input id="analysis-interval" type="number" min="500" max="10000" step="100"></label>
             <label style="align-content:end;"><span><input id="qwen-review" type="checkbox"> 允许 Qwen 低频复核标记</span></label>
           </div>
         </div>
@@ -106,7 +117,7 @@
 
       <div class="section">
         <h2>摄像头源配置</h2>
-        <p class="hint">支持 RTSP/IP/URL 摄像头源。配置保存到固定的 data/cameras.json；页面不会调用 /video_feed、/camera_config 或 /test_camera。</p>
+        <p class="hint">支持 RTSP/IP/URL 摄像头源。配置保存到固定的 data/cameras.json；页面只调用 CYPHER 摄像头 API，不调用旧 Vigil 视频流或旧相机配置接口。</p>
         <form id="camera-form">
           <div class="grid three">
             <label>名称 label <input id="camera-label" maxlength="80" placeholder="北门摄像头"></label>
@@ -173,10 +184,14 @@
     function fillConfig(config) {
       for (const key of labels) setNumber('threshold-' + key, config.thresholds?.[key]);
       for (const key of alertLabels) setNumber('confirm-' + key, config.confirmFrames?.[key]);
+      for (const key of alertLabels) setNumber('window-' + key, config.confirmWindowMs?.[key] ?? 0);
       for (const key of alertLabels) setNumber('cooldown-' + key, config.cooldowns?.[key]);
       document.getElementById('model-profile').value = config.modelProfile || 'default';
-      document.getElementById('analysis-interval').value = config.analysisIntervalMs || 1000;
+      document.getElementById('analysis-interval').value = config.analysisIntervalMs || 10000;
       document.getElementById('qwen-review').checked = Boolean(config.qwenReview);
+      document.getElementById('inference-imgsz').value = config.inference?.imgsz ?? 640;
+      document.getElementById('inference-device').value = config.inference?.device ?? '';
+      document.getElementById('inference-half').checked = Boolean(config.inference?.half);
       const profile = config.modelProfiles?.[config.modelProfile || 'default'];
       document.getElementById('profile-summary').textContent = profile ? `${profile.label} (${profile.env})` : '-';
     }
@@ -186,15 +201,23 @@
       for (const key of labels) thresholds[key] = numberValue('threshold-' + key);
       const confirmFrames = {};
       for (const key of alertLabels) confirmFrames[key] = numberValue('confirm-' + key);
+      const confirmWindowMs = {};
+      for (const key of alertLabels) confirmWindowMs[key] = numberValue('window-' + key);
       const cooldowns = {};
       for (const key of alertLabels) cooldowns[key] = numberValue('cooldown-' + key);
       return {
         thresholds,
         confirmFrames,
+        confirmWindowMs,
         cooldowns,
         modelProfile: document.getElementById('model-profile').value,
         qwenReview: document.getElementById('qwen-review').checked,
-        analysisIntervalMs: numberValue('analysis-interval')
+        analysisIntervalMs: numberValue('analysis-interval'),
+        inference: {
+          imgsz: numberValue('inference-imgsz'),
+          device: document.getElementById('inference-device').value.trim(),
+          half: document.getElementById('inference-half').checked
+        }
       };
     }
 
