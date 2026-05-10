@@ -47,7 +47,7 @@
   <main>
     <section class="panel">
       <h1>YOLO 检测治理配置</h1>
-      <p class="hint">本页只保存阈值、连续确认、冷却时间、模型 profile、Qwen 低频复核标记和分析间隔；不会接收 API Key、任意模型路径、快照目录或数据库路径。</p>
+      <p class="hint">本页只保存阈值、连续确认、冷却时间、模型 profile、Qwen 低频复核标记和分析间隔；不会接收 API Key、任意模型路径、快照目录或数据库路径。注意：当所有技能均为 disabled 时，后端会自动暂停 AI 分析循环，只保留摄像头拉流与画面预览。</p>
 
       <form id="config-form">
         <div class="section">
@@ -92,7 +92,7 @@
                 <option value="fire">fire</option>
               </select>
             </label>
-            <label>分析间隔 ms <input id="analysis-interval" type="number" min="500" max="10000" step="100"></label>
+            <label>分析间隔 ms（仅启用技能时生效） <input id="analysis-interval" type="number" min="500" max="10000" step="100"></label>
             <label style="align-content:end;"><span><input id="qwen-review" type="checkbox"> 允许 Qwen 低频复核标记</span></label>
           </div>
         </div>
@@ -106,7 +106,7 @@
 
       <div class="section">
         <h2>摄像头源配置</h2>
-        <p class="hint">支持 RTSP/IP/URL 摄像头源。配置保存到固定的 data/cameras.json；页面只调用 CYPHER 摄像头 API，不调用旧 Vigil 视频流或旧相机配置接口。</p>
+        <p class="hint">支持 RTSP/IP/URL 摄像头源。配置保存到固定的 data/cameras.json；页面不会调用 /video_feed、/camera_config 或 /test_camera。</p>
         <form id="camera-form">
           <div class="grid three">
             <label>名称 label <input id="camera-label" maxlength="80" placeholder="北门摄像头"></label>

@@ -325,6 +325,11 @@
     let eventSource = null;
     let skillTab = 'enabled';
     let skillItems = [];
+    let frameLoading = false;
+    let lastFrameRequestAt = 0;
+    let sseConnected = false;
+    const FRAME_REFRESH_MS = 500;
+    const ANALYSIS_FALLBACK_MS = 10000;
     const seenAlerts = new Set();
     const alertFeed = document.getElementById('alert-feed');
     const analysisContent = document.getElementById('analysis-content');
@@ -460,7 +465,7 @@
         <div class="analysis-tags">
           <span class="analysis-tag">alerts: ${alerts.length}</span>
           <span class="analysis-tag">detections: ${detections.length}</span>
-          <span class="analysis-tag">fallback: /api/analysis 3秒</span>
+          <span class="analysis-tag">fallback: /api/analysis 10秒</span>
         </div>
       `;
     }
@@ -469,6 +474,7 @@
       document.getElementById('sse-status').textContent = text;
       const dot = document.getElementById('sse-dot');
       dot.className = `dot ${state || ''}`;
+      sseConnected = state === 'ok';
     }
 
     function connectSse() {
@@ -486,7 +492,9 @@
       };
     }
 
-    async function pollAnalysis() {
+    async function pollAnalysis(force = false) {
+      // SSE 正常时，/api/analysis 只作为低频兜底，避免和实时流重复刷新 UI。
+      if (sseConnected && !force) return;
       try {
         const response = await fetch('/api/analysis?t=' + Date.now(), { cache: 'no-store' });
         if (!response.ok) return;
@@ -504,19 +512,31 @@
     }
 
     function refreshFrame() {
+      const now = Date.now();
+      if (frameLoading) return;
+      if (now - lastFrameRequestAt < FRAME_REFRESH_MS) return;
+
+      frameLoading = true;
+      lastFrameRequestAt = now;
+
       const image = document.getElementById('video-frame');
       const placeholder = document.getElementById('video-placeholder');
+
       image.onload = () => {
+        frameLoading = false;
         image.style.display = 'block';
         placeholder.style.display = 'none';
       };
+
       image.onerror = () => {
+        frameLoading = false;
         image.style.display = 'none';
         placeholder.style.display = 'block';
         const label = activeCameraId || 'active';
         placeholder.textContent = `等待摄像头帧：${label}。请打开推流页，或在设置页启动 RTSP/IP 摄像头。`;
       };
-      image.src = `${frameEndpoint()}?t=${Date.now()}`;
+
+      image.src = `${frameEndpoint()}?t=${now}`;
     }
     function renderCameras() {
       const list = document.getElementById('camera-list');
@@ -632,25 +652,21 @@
     }
 
     function renderSkills() {
-      if (skillTab === 'safety') {
-        skillModalBody.innerHTML = `
-          <div class="safety-note">
-            <strong>安全说明</strong><br>
-            Web 技能安装已禁用。页面不支持上传新技能。新技能必须通过受控本地部署流程加入。安装不等于启用；只有用户在这里明确启用后，技能才会参与 AI 分析。
-          </div>
-        `;
-        return;
-      }
+     if (skillTab === 'safety') {
+      skillModalBody.innerHTML = `
+        <div class="safety-note">
+          <strong>安全说明</strong><br>
+          Web 技能安装已禁用。页面不支持上传新技能。新技能必须通过受控本地部署流程加入。安装不等于启用；只有用户在这里明确启用后，技能才会参与 AI 分析。
+        </div>
+      `;
+  return;
+}
 
-      const rows = skillTab === 'enabled'
-        ? skillItems.filter(skill => skill.enabled === true)
-        : skillItems;
-
+      const rows = skillTab === 'enabled' ? skillItems.filter(skill => skill.enabled === true) : skillItems;
       if (!rows.length) {
         skillModalBody.innerHTML = `<div class="empty">${skillTab === 'enabled' ? '暂无已启用技能' : '暂无技能'}</div>`;
         return;
       }
-
       skillModalBody.innerHTML = rows.map(renderSkillRow).join('');
       skillModalBody.querySelectorAll('[data-skill-toggle]').forEach(button => {
         button.addEventListener('click', () => toggleSkill(button.dataset.skillToggle, button.dataset.enabled === 'true'));
@@ -691,7 +707,7 @@
     pollAnalysis();
     refreshFrame();
     setInterval(loadCameras, 10000);
-    setInterval(refreshFrame, 2000);
+    setInterval(refreshFrame, 1000);
     setInterval(pollAnalysis, 3000);
   </script>
 </body>

@@ -564,6 +564,7 @@ function toggleSkill(skillId, enabled) {
   if (!found) throw new Error(`未找到技能 "${skillId}"`);
 
   enabledState[skillId] = enabled;
+  failedSkills.delete(skillId);
   saveState();
 
   if (enabled) {
@@ -788,6 +789,30 @@ async function analyzeAll(base64Image, context = {}) {
 }
 
 /**
+ * 获取当前已启用技能列表。
+ * 注意：这个函数会确保已启用技能加载到内存，但不会启用任何技能。
+ */
+function getEnabledSkills() {
+  ensureEnabledSkillsLoaded();
+  return getAvailableSkills().filter(p => isEnabled(p.id));
+}
+
+/**
+ * 是否存在已启用技能。
+ * 供 server.js 的分析循环快速判断；没有技能时应跳过分析，避免空跑刷日志。
+ */
+function hasEnabledSkills() {
+  return getAvailableSkills().some(p => isEnabled(p.id));
+}
+
+/**
+ * 获取已启用技能数量。
+ */
+function getEnabledSkillCount() {
+  return getAvailableSkills().filter(p => isEnabled(p.id)).length;
+}
+
+/**
  * 获取已启用技能列表（含状态）
  */
 function getSkillsStatus() {
@@ -851,6 +876,9 @@ module.exports = {
   installSkill,
   installSkillFromContent,
   analyzeAll,
+  getEnabledSkills,
+  hasEnabledSkills,
+  getEnabledSkillCount,
   getActiveSkill,
   getActiveSkillInfo,
   shutdownPersistent,
