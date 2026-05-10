@@ -19,7 +19,8 @@ const WRITABLE_CONFIG_FIELDS = [
   'modelProfile',
   'qwenReview',
   'analysisIntervalMs',
-  'inference'
+  'inference',
+  'audio'
 ];
 
 const MODEL_PROFILES = {
@@ -62,6 +63,13 @@ const DEFAULT_DETECTION_CONFIG = {
     imgsz: 640,
     device: '',
     half: false
+  },
+  audio: {
+    enabled: true,
+    loudDbfs: -18,
+    confirmFrames: 3,
+    cooldownSeconds: 8,
+    staleMs: 3000
   }
 };
 
@@ -115,6 +123,12 @@ function parseIntegerRange(value, fallback, min, max) {
   return Math.min(max, Math.max(min, parsed));
 }
 
+function parseNumberRange(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
 function buildDefaultDetectionConfig(env = process.env) {
   const config = clone(DEFAULT_DETECTION_CONFIG);
   const defaultThreshold = envNumber(env, 'CYPHER_YOLO_CONF_DEFAULT', config.thresholds.helmet);
@@ -148,6 +162,12 @@ function buildDefaultDetectionConfig(env = process.env) {
   config.inference.imgsz = envInteger(env, 'CYPHER_YOLO_IMGSZ', config.inference.imgsz);
   config.inference.device = sanitizeDevice(env.CYPHER_YOLO_DEVICE ?? config.inference.device);
   config.inference.half = envBoolean(env, 'CYPHER_YOLO_HALF', config.inference.half);
+
+  config.audio.enabled = envBoolean(env, 'CYPHER_AUDIO_DETECT_ENABLED', config.audio.enabled);
+  config.audio.loudDbfs = envNumber(env, 'CYPHER_AUDIO_LOUD_DBFS', config.audio.loudDbfs);
+  config.audio.confirmFrames = envInteger(env, 'CYPHER_AUDIO_CONFIRM_FRAMES', config.audio.confirmFrames);
+  config.audio.cooldownSeconds = envNumber(env, 'CYPHER_AUDIO_COOLDOWN_SECONDS', config.audio.cooldownSeconds);
+  config.audio.staleMs = envInteger(env, 'CYPHER_AUDIO_STALE_MS', config.audio.staleMs);
 
   return sanitizeDetectionConfigForResponse(config);
 }
@@ -263,6 +283,36 @@ function validateDetectionConfig(input) {
     normalized.inference = inference;
   }
 
+  if (input.audio !== undefined) {
+    ensurePlainObject(input.audio, 'audio');
+    const audio = {};
+    if (input.audio.enabled !== undefined) {
+      if (typeof input.audio.enabled !== 'boolean') throw new Error('Invalid audio.enabled');
+      audio.enabled = input.audio.enabled;
+    }
+    if (input.audio.loudDbfs !== undefined) {
+      const parsed = Number(input.audio.loudDbfs);
+      if (!Number.isFinite(parsed) || parsed < -90 || parsed > 0) throw new Error('Invalid audio.loudDbfs');
+      audio.loudDbfs = parsed;
+    }
+    if (input.audio.confirmFrames !== undefined) {
+      const parsed = Number(input.audio.confirmFrames);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 20) throw new Error('Invalid audio.confirmFrames');
+      audio.confirmFrames = parsed;
+    }
+    if (input.audio.cooldownSeconds !== undefined) {
+      const parsed = Number(input.audio.cooldownSeconds);
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 3600) throw new Error('Invalid audio.cooldownSeconds');
+      audio.cooldownSeconds = parsed;
+    }
+    if (input.audio.staleMs !== undefined) {
+      const parsed = Number(input.audio.staleMs);
+      if (!Number.isInteger(parsed) || parsed < 500 || parsed > 60000) throw new Error('Invalid audio.staleMs');
+      audio.staleMs = parsed;
+    }
+    normalized.audio = audio;
+  }
+
   return normalized;
 }
 
@@ -286,6 +336,9 @@ function mergeDetectionConfig(base, override) {
   if (normalized.inference) {
     config.inference = { ...config.inference, ...normalized.inference };
   }
+  if (normalized.audio) {
+    config.audio = { ...config.audio, ...normalized.audio };
+  }
   for (const key of ['modelProfile', 'qwenReview', 'analysisIntervalMs']) {
     if (normalized[key] !== undefined) config[key] = normalized[key];
   }
@@ -305,6 +358,13 @@ function sanitizeDetectionConfigForResponse(config) {
       imgsz: parseIntegerRange(config.inference?.imgsz, DEFAULT_DETECTION_CONFIG.inference.imgsz, 160, 1920),
       device: sanitizeDevice(config.inference?.device ?? DEFAULT_DETECTION_CONFIG.inference.device),
       half: parseBoolean(config.inference?.half, DEFAULT_DETECTION_CONFIG.inference.half)
+    },
+    audio: {
+      enabled: parseBoolean(config.audio?.enabled, DEFAULT_DETECTION_CONFIG.audio.enabled),
+      loudDbfs: parseNumberRange(config.audio?.loudDbfs, DEFAULT_DETECTION_CONFIG.audio.loudDbfs, -90, 0),
+      confirmFrames: parseIntegerRange(config.audio?.confirmFrames, DEFAULT_DETECTION_CONFIG.audio.confirmFrames, 1, 20),
+      cooldownSeconds: parseNumberRange(config.audio?.cooldownSeconds, DEFAULT_DETECTION_CONFIG.audio.cooldownSeconds, 0, 3600),
+      staleMs: parseIntegerRange(config.audio?.staleMs, DEFAULT_DETECTION_CONFIG.audio.staleMs, 500, 60000)
     }
   };
   const result = clone(source);
@@ -321,7 +381,8 @@ function configWithoutReadOnlyFields(config) {
     modelProfile: config.modelProfile,
     qwenReview: config.qwenReview,
     analysisIntervalMs: config.analysisIntervalMs,
-    inference: clone(config.inference)
+    inference: clone(config.inference),
+    audio: clone(config.audio)
   };
 }
 
@@ -363,7 +424,8 @@ function buildSkillConfigContext(config) {
     modelProfile: safeConfig.modelProfile,
     qwenReview: safeConfig.qwenReview,
     analysisIntervalMs: safeConfig.analysisIntervalMs,
-    inference: clone(safeConfig.inference)
+    inference: clone(safeConfig.inference),
+    audio: clone(safeConfig.audio)
   };
   return {
     config: skillConfig,

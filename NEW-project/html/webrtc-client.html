@@ -279,11 +279,11 @@
     <header>
         <div class="logo">
             <i class="fa-solid fa-camera"></i>
-            <span>AI 摄像头推流</span>
+            <span>AI 摄像头推流/span>
         </div>
         <div class="status-badge" id="status-badge">
             <span class="pulse-dot"></span>
-            <span id="status-text">未连接</span>
+            <span id="status-text">未连接/span>
         </div>
     </header>
 
@@ -296,7 +296,7 @@
         <div class="placeholder" id="placeholder">
             <i class="fa-solid fa-video-slash"></i>
             <p>摄像头未启动</p>
-            <p class="hint">点击下方按钮开始推流</p>
+            <p class="hint">点击下方按钮开始推流/p>
         </div>
     </div>
 
@@ -311,7 +311,7 @@
 
     <div class="controls">
         <button class="btn btn-primary" id="startBtn" onclick="startWebRTC()">
-            <i class="fa-solid fa-play"></i> 开始推流 </button>
+            <i class="fa-solid fa-play"></i> 开始推流        </button>
     </div>
 
     <script>
@@ -381,10 +381,15 @@
                         width: { ideal: isMobile ? 1920 : 1280 },
                         height: { ideal: isMobile ? 1080 : 720 }
                     },
-                    audio: false
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
                 };
 
-                stream = await navigator.mediaDevices.getUserMedia(constraints).catch(() => {
+                stream = await navigator.mediaDevices.getUserMedia(constraints).catch((error) => {
+                    console.warn('摄像头+麦克风获取失败，回退为仅摄像头:', error.message);
                     return navigator.mediaDevices.getUserMedia({
                         video: { width: { ideal: 1280 }, height: { ideal: 720 } },
                         audio: false
@@ -403,7 +408,10 @@
                     }
                 };
 
-                infoText.textContent = '摄像头已获取，正在建立 WebRTC 连接...';
+                const hasAudioTrack = stream.getAudioTracks().length > 0;
+                infoText.textContent = hasAudioTrack
+                    ? '摄像头和麦克风已获取，正在建立 WebRTC 连接...'
+                    : '摄像头已获取，未启用麦克风，正在建立 WebRTC 连接...';
                 pc = new PeerConnection({
                     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
                 });
@@ -417,7 +425,7 @@
                     body: JSON.stringify({
                         sdp: pc.localDescription.sdp,
                         type: pc.localDescription.type,
-                        label: '浏览器摄像头'
+                        label: stream.getAudioTracks().length > 0 ? '浏览器摄像头+麦克风' : '浏览器摄像头'
                     }),
                     headers: { 'Content-Type': 'application/json' },
                     method: 'POST'

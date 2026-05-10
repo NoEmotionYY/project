@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>桌面捕获推流 - 真视眼调试工具</title>
+    <title>桌面捕获推流 - 真视眼调试工具/title>
     <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -168,15 +168,15 @@
             <div class="preview-area" id="preview-area">
                 <div class="preview-placeholder" id="placeholder">
                     <i class="fa fa-desktop"></i>
-                    <div>点击开始捕获以选择屏幕源</div>
+                    <div>点击开始捕获以选择屏幕源/div>
                 </div>
                 <video id="preview-video" autoplay playsinline muted style="display:none;"></video>
-                <div class="rec-badge" id="rec-badge"><i class="fa fa-circle"></i> 推流中</div>
+                <div class="rec-badge" id="rec-badge"><i class="fa fa-circle"></i> 推流中/div>
             </div>
 
             <div class="status-bar">
                 <div class="status-dot" id="status-dot"></div>
-                <span class="status-text" id="status-text">未连接</span>
+                <span class="status-text" id="status-text">未连接/span>
                 <span class="info-text" id="info-text">准备就绪</span>
             </div>
 
@@ -190,7 +190,7 @@
                     <li>捕获的桌面画面会注册为“桌面捕获”摄像头，可在 monitor 面板切换查看</li>
                     <li>选择“整个屏幕”可捕获全屏，选择“窗口”可捕获单个应用</li>
                     <li>推流后画面会实时传输到后端，AI 技能会对其进行分析</li>
-                    <li>停止推流后摄像头会自动断开，可在 monitor 中删除</li>
+                    <li>停止推流后摄像头会自动断开，可在 monitor 中删除/li>
                 </ul>
             </div>
         </div>
@@ -243,13 +243,19 @@
 
                 stream = await navigator.mediaDevices.getDisplayMedia({
                     video: { cursor: 'always' },
-                    audio: false
+                    audio: true
+                }).catch((error) => {
+                    console.warn('屏幕+音频捕获失败，回退为仅屏幕:', error.message);
+                    return navigator.mediaDevices.getDisplayMedia({
+                        video: { cursor: 'always' },
+                        audio: false
+                    });
                 });
 
                 previewVideo.srcObject = stream;
                 previewVideo.style.display = 'block';
                 placeholder.style.display = 'none';
-                infoText.textContent = '屏幕已捕获，正在建立 WebRTC 连接...';
+                infoText.textContent = stream.getAudioTracks().length > 0 ? '屏幕和系统音频已捕获，正在建立 WebRTC 连接...' : '屏幕已捕获，正在建立 WebRTC 连接...';
 
                 stream.getVideoTracks()[0].onended = () => stopCapture();
 
@@ -266,7 +272,7 @@
                     body: JSON.stringify({
                         sdp: pc.localDescription.sdp,
                         type: pc.localDescription.type,
-                        label: '桌面捕获'
+                        label: stream.getAudioTracks().length > 0 ? '桌面捕获+音频' : '桌面捕获'
                     }),
                     headers: { 'Content-Type': 'application/json' },
                     method: 'POST'

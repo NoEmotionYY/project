@@ -47,7 +47,7 @@
   <main>
     <section class="panel">
       <h1>YOLO 检测治理配置</h1>
-      <p class="hint">本页只保存阈值、连续确认、确认时间窗口、冷却时间、模型 profile、YOLO 推理参数、Qwen 低频复核标记和分析间隔；不会接收 API Key、任意模型路径、快照目录或数据库路径。</p>
+      <p class="hint">本页只保存阈值、连续确认、确认时间窗口、冷却时间、模型 profile、YOLO 推理参数、音频检测参数、Qwen 低频复核标记和分析间隔；不会接收 API Key、任意模型路径、快照目录或数据库路径。</p>
 
       <form id="config-form">
         <div class="section">
@@ -103,8 +103,23 @@
                 <option value="fire">fire</option>
               </select>
             </label>
-            <label>分析间隔 ms <input id="analysis-interval" type="number" min="500" max="10000" step="100"></label>
+            <label>分析间隔 ms <input id="analysis-interval" type="number" min="500" max="60000" step="100"></label>
             <label style="align-content:end;"><span><input id="qwen-review" type="checkbox"> 允许 Qwen 低频复核标记</span></label>
+            <label>YOLO imgsz <input id="inference-imgsz" type="number" min="160" max="1920" step="32" placeholder="640"></label>
+            <label>YOLO device <input id="inference-device" placeholder="空=自动，cpu，0，cuda:0"></label>
+            <label style="align-content:end;"><span><input id="inference-half" type="checkbox"> YOLO half FP16</span></label>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>音频检测</h2>
+          <p class="hint">音频检测来自 WebRTC 推流页的麦克风音轨。RTSP 当前只做视频拉流，不解析 RTSP 音频。</p>
+          <div class="grid three">
+            <label style="align-content:end;"><span><input id="audio-enabled" type="checkbox"> 启用音频检测参数</span></label>
+            <label>响声阈值 dBFS <input id="audio-loud-dbfs" type="number" min="-90" max="0" step="1" placeholder="-18"></label>
+            <label>连续确认次数 <input id="audio-confirm-frames" type="number" min="1" max="20" step="1" placeholder="3"></label>
+            <label>冷却秒数 <input id="audio-cooldown-seconds" type="number" min="0" max="3600" step="1" placeholder="8"></label>
+            <label>音频过期 ms <input id="audio-stale-ms" type="number" min="500" max="60000" step="100" placeholder="3000"></label>
           </div>
         </div>
 
@@ -192,6 +207,11 @@
       document.getElementById('inference-imgsz').value = config.inference?.imgsz ?? 640;
       document.getElementById('inference-device').value = config.inference?.device ?? '';
       document.getElementById('inference-half').checked = Boolean(config.inference?.half);
+      document.getElementById('audio-enabled').checked = config.audio?.enabled !== false;
+      document.getElementById('audio-loud-dbfs').value = config.audio?.loudDbfs ?? -18;
+      document.getElementById('audio-confirm-frames').value = config.audio?.confirmFrames ?? 3;
+      document.getElementById('audio-cooldown-seconds').value = config.audio?.cooldownSeconds ?? 8;
+      document.getElementById('audio-stale-ms').value = config.audio?.staleMs ?? 3000;
       const profile = config.modelProfiles?.[config.modelProfile || 'default'];
       document.getElementById('profile-summary').textContent = profile ? `${profile.label} (${profile.env})` : '-';
     }
@@ -217,6 +237,13 @@
           imgsz: numberValue('inference-imgsz'),
           device: document.getElementById('inference-device').value.trim(),
           half: document.getElementById('inference-half').checked
+        },
+        audio: {
+          enabled: document.getElementById('audio-enabled').checked,
+          loudDbfs: numberValue('audio-loud-dbfs'),
+          confirmFrames: numberValue('audio-confirm-frames'),
+          cooldownSeconds: numberValue('audio-cooldown-seconds'),
+          staleMs: numberValue('audio-stale-ms')
         }
       };
     }
@@ -343,6 +370,7 @@
             <div class="item-row"><strong>${escapeHtml(camera.label || camera.id)}</strong><span class="badge">${escapeHtml(camera.status || '-')}</span></div>
             <div class="meta">id: ${escapeHtml(camera.id)} | type: ${escapeHtml(camera.type || '-')} | source: ${escapeHtml(camera.sourceType || '-')}</div>
             <div class="meta">frame: ${camera.hasFrame ? '有帧' : '无帧'} | count: ${Number(camera.frameCount || 0)}</div>
+            <div class="meta">audio: ${camera.hasAudio ? '有音频' : '无音频'} | ${escapeHtml(camera.audioStatus || 'idle')} | dBFS: ${camera.audioDbfs ?? '-'}</div>
             <div class="meta">endpoint: /api/cameras/${encodeURIComponent(camera.id)}/frame</div>
             ${camera.url ? `<div class="meta">url: ${escapeHtml(camera.url)}${camera.hasCredentials ? '（密码已遮蔽）' : ''}</div>` : ''}
             ${camera.error ? `<div class="meta">error: ${escapeHtml(camera.error)}</div>` : ''}

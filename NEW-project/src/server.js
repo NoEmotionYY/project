@@ -2,7 +2,7 @@
  * Node.js 核心服务
  * 职责: WebRTC 收流、RTSP 拉流、抽帧、AI 技能调用、SSE 推送、HTTPS API
  */
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 const express = require('express');
 const https = require('https');
@@ -49,7 +49,7 @@ process.on('unhandledRejection', (reason) => {
 
 const sharp = require('sharp');
 const { RTCPeerConnection, RTCSessionDescription } = require('@roamhq/wrtc');
-const { RTCVideoSink, i420ToRgba } = require('@roamhq/wrtc').nonstandard;
+const { RTCVideoSink, RTCAudioSink, i420ToRgba } = require('@roamhq/wrtc').nonstandard;
 const { findAvailablePort } = requireProjectModule('port-utils');
 const {
   readCameraConfig,
@@ -115,25 +115,21 @@ const {
 const PYTHON_BIN = process.env.PYTHON_PATH || process.env.PYTHON || 'python';
 
 // ==========================================
-// 加载 AI 技能（通过技能管理器）// ==========================================
+// 加载 AI 技能（通过技能管理器）
+// ==========================================
 const skillManager = requireProjectModule('skill-manager');
 let aiSkill; // 向后兼容，保留引用
-// Ensure at least one default skill is enabled on startup.
-try {
-  const defaultSkill = process.env.AI_SKILL || 'qwen-vl';
-  const status = skillManager.getSkillsStatus();
-  const hasEnabled = status.some(p => p.enabled);
 
-  if (!hasEnabled) {
-    skillManager.toggleSkill(defaultSkill, true);
-    console.log(`[技能] 默认启用: ${defaultSkill}`);
-  } else {
-    console.log(`[技能] 已启用 ${status.filter(p => p.enabled).length} 个技能`);
-  }
+// 不再默认启用任何技能。
+// 技能是否参与分析完全由 skills-state.json 和 /api/skills/toggle 控制。
+try {
+  const status = skillManager.getSkillsStatus();
+  const enabledCount = status.filter(p => p.enabled).length;
+  console.log(`[技能] 当前启用 ${enabledCount} / ${status.length} 个技能`);
   aiSkill = skillManager;
 } catch (e) {
   console.error('[技能] 初始化失败:', e.message);
-  process.exit(1);
+  aiSkill = null;
 }
 // ==========================================
 // 全局状态// ==========================================
@@ -200,6 +196,11 @@ function createCamera(id, type, value, options = {}) {
     error: '',
     frameCount: 0,
     latestJpeg: null,
+    latestAudio: null,
+    audioStatus: 'idle',
+    audioError: '',
+    audioFrameCount: 0,
+    audioWindow: null,
     rtspProcess: null
   };
   if (type === 'rtsp') {
@@ -225,6 +226,95 @@ function getLatestFrameJpeg() {
   return cam ? cam.latestJpeg : null;
 }
 
+function getLatestAudioMetrics(cameraId = activeCameraId) {
+  const cam = getCamera(cameraId);
+  if (!cam || !cam.latestAudio) return null;
+  const ageMs = Date.now() - cam.latestAudio.lastAt;
+  return {
+    ...cam.latestAudio,
+    ageMs,
+    fresh: ageMs <= 3000,
+    status: ageMs <= 3000 ? (cam.audioStatus || 'receiving') : 'stale'
+  };
+}
+
+function dbfsFromRatio(value) {
+  if (!Number.isFinite(value) || value <= 0) return -120;
+  return Math.max(-120, Math.min(0, 20 * Math.log10(value)));
+}
+
+function normalizeAudioSamples(samples) {
+  if (!samples) return null;
+  if (samples instanceof Int16Array) return samples;
+  if (ArrayBuffer.isView(samples)) {
+    return new Int16Array(samples.buffer, samples.byteOffset, Math.floor(samples.byteLength / 2));
+  }
+  if (samples instanceof ArrayBuffer) return new Int16Array(samples);
+  return null;
+}
+
+function updateAudioMetrics(camId, audioData) {
+  const samples = normalizeAudioSamples(audioData.samples);
+  if (!samples || samples.length === 0) return false;
+
+  let cam = getCamera(camId);
+  if (!cam) {
+    cam = createCamera(camId, 'webrtc', `手机推流 (${camId})`);
+    cameras.set(camId, cam);
+  }
+
+  let sumSquares = 0;
+  let peak = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const value = Math.max(-32768, Math.min(32767, Number(samples[i]) || 0));
+    const abs = Math.abs(value);
+    if (abs > peak) peak = abs;
+    sumSquares += value * value;
+  }
+
+  const rms = Math.sqrt(sumSquares / samples.length) / 32768;
+  const peakRatio = peak / 32768;
+  const dbfs = dbfsFromRatio(rms);
+  const peakDbfs = dbfsFromRatio(peakRatio);
+  const now = Date.now();
+  const windowMs = 1000;
+
+  if (!cam.audioWindow || now - cam.audioWindow.startAt > windowMs) {
+    cam.audioWindow = {
+      startAt: now,
+      count: 0,
+      dbfsSum: 0,
+      peakDbfs
+    };
+  }
+
+  cam.audioWindow.count += 1;
+  cam.audioWindow.dbfsSum += dbfs;
+  cam.audioWindow.peakDbfs = Math.max(cam.audioWindow.peakDbfs, peakDbfs);
+
+  const windowAvgDbfs = cam.audioWindow.dbfsSum / cam.audioWindow.count;
+  cam.audioStatus = 'receiving';
+  cam.audioError = '';
+  cam.audioFrameCount = (cam.audioFrameCount || 0) + 1;
+  cam.latestAudio = {
+    status: 'receiving',
+    lastAt: now,
+    sampleRate: audioData.sampleRate || 0,
+    channelCount: audioData.channelCount || 0,
+    bitsPerSample: audioData.bitsPerSample || 16,
+    numberOfFrames: audioData.numberOfFrames || samples.length,
+    rms: Number(rms.toFixed(6)),
+    peak: Number(peakRatio.toFixed(6)),
+    dbfs: Number(dbfs.toFixed(2)),
+    peakDbfs: Number(peakDbfs.toFixed(2)),
+    windowMs,
+    windowAvgDbfs: Number(windowAvgDbfs.toFixed(2)),
+    windowPeakDbfs: Number(cam.audioWindow.peakDbfs.toFixed(2)),
+    level: Number(Math.max(0, Math.min(1, (dbfs + 60) / 60)).toFixed(4))
+  };
+  return true;
+}
+
 function getAllCameraList() {
   return Array.from(cameras.values()).map(c => ({
     id: c.id,
@@ -236,7 +326,13 @@ function getAllCameraList() {
     status: c.status,
     error: c.error,
     frameCount: c.frameCount,
-    hasFrame: !!c.latestJpeg
+    hasFrame: !!c.latestJpeg,
+    hasAudio: !!(c.latestAudio && Date.now() - c.latestAudio.lastAt <= 3000),
+    audioStatus: c.audioStatus || 'idle',
+    audioDbfs: c.latestAudio ? c.latestAudio.dbfs : null,
+    audioPeakDbfs: c.latestAudio ? c.latestAudio.windowPeakDbfs : null,
+    audioLevel: c.latestAudio ? c.latestAudio.level : null,
+    audioFrameCount: c.audioFrameCount || 0
   }));
 }
 
@@ -285,6 +381,12 @@ function publicCamera(camera) {
     error: camera.error,
     frameCount: camera.frameCount,
     hasFrame: !!camera.latestJpeg,
+    hasAudio: !!(camera.latestAudio && Date.now() - camera.latestAudio.lastAt <= 3000),
+    audioStatus: camera.audioStatus || 'idle',
+    audioDbfs: camera.latestAudio ? camera.latestAudio.dbfs : null,
+    audioPeakDbfs: camera.latestAudio ? camera.latestAudio.windowPeakDbfs : null,
+    audioLevel: camera.latestAudio ? camera.latestAudio.level : null,
+    audioFrameCount: camera.audioFrameCount || 0,
     frameEndpoint: '/api/cameras/' + encodeURIComponent(camera.id) + '/frame'
   };
 }
@@ -526,11 +628,16 @@ function writeRuntimeFrame(cameraId, jpegBuffer) {
   return path.relative(PROJECT_ROOT, absPath).replace(/\\/g, '/');
 }
 
+function isAudioOnlySkill(skill) {
+  const id = skill && (skill.id || skill.name);
+  return id === 'audio-detector';
+}
+
 function shouldUseFramePathOnly(enabledSkills) {
   if (!Array.isArray(enabledSkills) || enabledSkills.length === 0) return false;
   return enabledSkills.every(skill => {
     const id = skill.id || skill.name;
-    return id === 'yolo-safety';
+    return id === 'yolo-safety' || id === 'audio-detector';
   });
 }
 
@@ -695,6 +802,56 @@ function getSkillConfigContext() {
   return buildSkillConfigContext(getDetectionConfig());
 }
 
+
+function getAnalysisIntervalMs(config = getDetectionConfig()) {
+  const raw = Number(config && config.analysisIntervalMs);
+  if (!Number.isFinite(raw)) return 10000;
+  return Math.max(500, Math.min(60000, Math.floor(raw)));
+}
+
+function getEnabledAnalysisSkills() {
+  try {
+    if (skillManager && typeof skillManager.getEnabledSkills === 'function') {
+      return skillManager.getEnabledSkills();
+    }
+    if (skillManager && typeof skillManager.getSkillsStatus === 'function') {
+      return skillManager.getSkillsStatus().filter(skill => skill.enabled === true);
+    }
+  } catch (err) {
+    console.error('[技能] 读取启用技能失败:', err.message);
+  }
+  return [];
+}
+
+function updateAnalysisPausedState(reason) {
+  const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+
+  aiResult = {
+    ...aiResult,
+    text: reason,
+    time: timeStr,
+    analyzing: false,
+    alert: false,
+    alert_message: '',
+    alert_details: [],
+    voice_reminder: false,
+    voice_text: '',
+    voice_texts: [],
+    risk_level: 'none',
+    cleanup_hint: '',
+    evacuate_reminder: false,
+    evacuate_text: '',
+    beep_count: 0,
+    damage_voice_text: '',
+    damage_alert_details: [],
+    damage_beep_count: 0,
+    alerts: [],
+    detections: []
+  };
+
+  broadcastSSE(aiResult);
+}
+
 function runAlertQuery(action, payload = {}) {
   return new Promise((resolve, reject) => {
     let finished = false;
@@ -855,17 +1012,80 @@ async function processVideoTrack(track, pc, camId) {
   pc.removeEventListener('connectionstatechange', onStateChange);
   console.log(`[视频:${camId}] track processing ended`);
 }
+
+async function processAudioTrack(track, pc, camId) {
+  if (typeof RTCAudioSink !== 'function') {
+    const cam = getCamera(camId);
+    if (cam) {
+      cam.audioStatus = 'unsupported';
+      cam.audioError = '当前 wrtc 运行时不支持 RTCAudioSink';
+    }
+    console.warn(`[音频:${camId}] 当前 wrtc 运行时不支持 RTCAudioSink`);
+    return;
+  }
+
+  console.log(`[音频:${camId}] creating RTCAudioSink`);
+  const sink = new RTCAudioSink(track);
+  let active = true;
+  let firstAudioReceived = false;
+
+  if (!getCamera(camId)) {
+    const cam = createCamera(camId, 'webrtc', `手机推流 (${camId})`);
+    cameras.set(camId, cam);
+  }
+
+  const cam = getCamera(camId);
+  if (cam) {
+    cam.audioStatus = 'waiting';
+    cam.audioError = '';
+  }
+
+  const onStateChange = () => {
+    if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) {
+      active = false;
+      try { sink.stop(); } catch (_) {}
+      const c = getCamera(camId);
+      if (c) c.audioStatus = 'disconnected';
+    }
+  };
+  pc.addEventListener('connectionstatechange', onStateChange);
+
+  sink.ondata = (data) => {
+    if (!active) return;
+    if (!firstAudioReceived) {
+      firstAudioReceived = true;
+      console.log(`[音频:${camId}] received first audio frame: sampleRate=${data.sampleRate}, channels=${data.channelCount}`);
+    }
+    updateAudioMetrics(camId, data);
+  };
+
+  await new Promise(resolve => {
+    const check = setInterval(() => {
+      if (!active) {
+        clearInterval(check);
+        resolve();
+      }
+    }, 500);
+  });
+
+  pc.removeEventListener('connectionstatechange', onStateChange);
+  console.log(`[音频:${camId}] track processing ended`);
+}
 // ==========================================// AI 定时分析
 // ==========================================
 let lastPausedReason = '';
 
 async function runAnalysisTick() {
   try {
-    const frameJpeg = getLatestFrameJpeg();
-    if (!frameJpeg || isAnalyzing) return;
+    if (isAnalyzing) return;
 
     const config = getDetectionConfig();
+    const frameJpeg = getLatestFrameJpeg();
+    const audioMetrics = getLatestAudioMetrics(activeCameraId);
+    const hasFreshAudio = Boolean(audioMetrics && audioMetrics.fresh);
     const enabledSkills = getEnabledAnalysisSkills();
+
+    if (!frameJpeg && !hasFreshAudio) return;
 
     if (!enabledSkills.length) {
       const message = '未启用 AI 技能，已暂停分析。摄像头拉流仍会继续，画面预览不受影响。';
@@ -879,9 +1099,12 @@ async function runAnalysisTick() {
       return;
     }
 
+    const needsImage = enabledSkills.some(skill => !isAudioOnlySkill(skill));
+    if (needsImage && !frameJpeg) return;
+
     lastPausedReason = '';
     isAnalyzing = true;
-    const frameCopy = Buffer.from(frameJpeg);
+    const frameCopy = frameJpeg ? Buffer.from(frameJpeg) : Buffer.alloc(0);
     const startTime = Date.now();
 
     aiResult = {
@@ -896,14 +1119,16 @@ async function runAnalysisTick() {
       const activeCam = getActiveCamera();
       const skillConfigContext = buildSkillConfigContext(config);
       let framePath = '';
-      try {
-        framePath = writeRuntimeFrame(activeCameraId, frameCopy);
-      } catch (err) {
-        console.warn('[analysis] 写入 runtime frame 失败，回退 base64:', err.message);
+      if (frameCopy.length > 0) {
+        try {
+          framePath = writeRuntimeFrame(activeCameraId, frameCopy);
+        } catch (err) {
+          console.warn('[analysis] 写入 runtime frame 失败，回退 base64:', err.message);
+        }
       }
 
       const useFramePathOnly = Boolean(framePath) && shouldUseFramePathOnly(enabledSkills);
-      const base64 = useFramePathOnly ? '' : frameCopy.toString('base64');
+      const base64 = useFramePathOnly || frameCopy.length === 0 ? '' : frameCopy.toString('base64');
 
       const analysisContext = {
         type: 'analyze',
@@ -911,6 +1136,8 @@ async function runAnalysisTick() {
         cameraLabel: activeCam ? (activeCam.label || maskCameraUrl(activeCam.url) || activeCameraId) : activeCameraId,
         timestamp: Date.now(),
         framePath,
+        audio: audioMetrics,
+        audioMetrics,
         ...skillConfigContext
       };
 
@@ -1107,10 +1334,13 @@ app.post('/offer', async (req, res) => {
     });
 
     pc.addEventListener('track', (event) => {
-      console.log(`[WebRTC:${camId}] track 浜嬩欢, kind:`, event.track.kind);
+      console.log(`[WebRTC:${camId}] track 事件, kind:`, event.track.kind);
       if (event.track.kind === 'video') {
         console.log(`[WebRTC:${camId}] video track connected`);
         processVideoTrack(event.track, pc, camId).catch(console.error);
+      } else if (event.track.kind === 'audio') {
+        console.log(`[WebRTC:${camId}] audio track connected`);
+        processAudioTrack(event.track, pc, camId).catch(console.error);
       }
     });
 
@@ -1186,6 +1416,23 @@ app.get('/api/cameras/:id/frame', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.set('X-Camera-Id', cam.id);
   res.send(cam.latestJpeg);
+});
+
+// 获取当前 active 摄像头的音频状态
+app.get('/api/audio/status', (req, res) => {
+  const activeAudio = getLatestAudioMetrics(activeCameraId);
+  res.json({
+    success: true,
+    active: activeCameraId,
+    audio: activeAudio,
+    cameras: Array.from(cameras.values()).map(camera => ({
+      id: camera.id,
+      label: camera.label,
+      audioStatus: camera.audioStatus || 'idle',
+      hasAudio: !!(camera.latestAudio && Date.now() - camera.latestAudio.lastAt <= 3000),
+      audio: getLatestAudioMetrics(camera.id)
+    }))
+  });
 });
 
 // 获取 AI 分析结果

@@ -32,7 +32,7 @@ const SKILLS_DIR = path.resolve(__dirname, '..', 'skills');
 const STATE_FILE = path.resolve(SKILLS_DIR, 'skills-state.json');
 const MANAGER_FILE = path.basename(__filename);
 const ALLOWED_INSTALL_EXTENSIONS = new Set(['.js', '.py']);
-const PROTECTED_SKILL_FILES = new Set(['qwen-vl.js', 'yolo-safety.py', 'skills-state.json', MANAGER_FILE]);
+const PROTECTED_SKILL_FILES = new Set(['qwen-vl.js', 'yolo-safety.py', 'audio-detector.js', 'skills-state.json', MANAGER_FILE]);
 
 function safeName(input, fallback = 'default') {
   const safeFallback = String(fallback || 'default').replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
