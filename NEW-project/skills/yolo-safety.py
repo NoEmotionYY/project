@@ -16,9 +16,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageDraw, ImageFont
 except Exception:  # pragma: no cover - optional runtime dependency check
     Image = None
+    ImageDraw = None
+    ImageFont = None
 
 try:
     from ultralytics import YOLO
@@ -97,9 +99,25 @@ DEFAULT_COOLDOWNS = {
     "smoke": 10.0,
 }
 
+# 0 表示沿用原来的“连续分析次数/帧数”确认逻辑。
+# 大于 0 时表示在指定时间窗口内命中 required 次即可确认，适合分析间隔不稳定或多摄像头高并发场景。
+DEFAULT_CONFIRM_WINDOWS_MS = {
+    "no-helmet": 0,
+    "no-vest": 0,
+    "fire": 0,
+    "smoke": 0,
+}
+
+DEFAULT_INFERENCE = {
+    "imgsz": 640,
+    "device": "",
+    "half": False,
+}
+
 MODEL_PROFILES = ("default", "ppe", "fire")
 _MODEL_CACHE = {}
 _FALLBACK_LOGGED = False
+_ALERT_TABLE_READY = False
 
 ALERT_TABLE_COLUMNS = {
     "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
@@ -158,8 +176,16 @@ def env_int(name, default):
         return default
 
 
+def env_str(name, default=""):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return str(value).strip()
+
+
 def build_config(overrides=None):
     default_conf = env_float("CYPHER_YOLO_CONF_DEFAULT", DEFAULT_THRESHOLDS["helmet"])
+    default_window = env_int("CYPHER_ALERT_CONFIRM_WINDOW_MS", 0)
     config = {
         "thresholds": {
             "helmet": default_conf,
@@ -175,6 +201,12 @@ def build_config(overrides=None):
             "fire": env_int("CYPHER_ALERT_CONFIRM_FIRE", DEFAULT_CONFIRM_COUNTS["fire"]),
             "smoke": env_int("CYPHER_ALERT_CONFIRM_SMOKE", DEFAULT_CONFIRM_COUNTS["smoke"]),
         },
+        "confirmWindowMs": {
+            "no-helmet": max(0, env_int("CYPHER_ALERT_CONFIRM_WINDOW_NO_HELMET_MS", default_window)),
+            "no-vest": max(0, env_int("CYPHER_ALERT_CONFIRM_WINDOW_NO_VEST_MS", default_window)),
+            "fire": max(0, env_int("CYPHER_ALERT_CONFIRM_WINDOW_FIRE_MS", default_window)),
+            "smoke": max(0, env_int("CYPHER_ALERT_CONFIRM_WINDOW_SMOKE_MS", default_window)),
+        },
         "cooldowns": {
             "no-helmet": env_float("CYPHER_ALERT_COOLDOWN_SECONDS", DEFAULT_COOLDOWNS["no-helmet"]),
             "no-vest": env_float("CYPHER_ALERT_COOLDOWN_SECONDS", DEFAULT_COOLDOWNS["no-vest"]),
@@ -183,6 +215,11 @@ def build_config(overrides=None):
         },
         "qwenReview": parse_bool(os.environ.get("CYPHER_ENABLE_QWEN_REVIEW"), False),
         "modelProfile": "default",
+        "inference": {
+            "imgsz": max(1, env_int("CYPHER_YOLO_IMGSZ", DEFAULT_INFERENCE["imgsz"])),
+            "device": env_str("CYPHER_YOLO_DEVICE", DEFAULT_INFERENCE["device"]),
+            "half": parse_bool(os.environ.get("CYPHER_YOLO_HALF"), DEFAULT_INFERENCE["half"]),
+        },
     }
 
     if isinstance(overrides, dict):
@@ -207,6 +244,23 @@ def build_config(overrides=None):
                         config["confirmCounts"][key] = max(1, int(value))
                     except (TypeError, ValueError):
                         pass
+        window_overrides = overrides.get("confirmWindowMs")
+        if not isinstance(window_overrides, dict):
+            window_overrides = overrides.get("confirmWindowsMs")
+        if isinstance(window_overrides, dict):
+            for key, value in window_overrides.items():
+                if key in config["confirmWindowMs"]:
+                    try:
+                        config["confirmWindowMs"][key] = max(0, int(value))
+                    except (TypeError, ValueError):
+                        pass
+        elif "confirmWindowMs" in overrides:
+            try:
+                window = max(0, int(overrides.get("confirmWindowMs")))
+                for key in config["confirmWindowMs"]:
+                    config["confirmWindowMs"][key] = window
+            except (TypeError, ValueError):
+                pass
         if isinstance(overrides.get("cooldowns"), dict):
             for key, value in overrides["cooldowns"].items():
                 if key in config["cooldowns"]:
@@ -214,9 +268,30 @@ def build_config(overrides=None):
                         config["cooldowns"][key] = max(0.0, float(value))
                     except (TypeError, ValueError):
                         pass
+        inference_overrides = overrides.get("inference")
+        if isinstance(inference_overrides, dict):
+            if "imgsz" in inference_overrides:
+                try:
+                    config["inference"]["imgsz"] = max(1, int(inference_overrides["imgsz"]))
+                except (TypeError, ValueError):
+                    pass
+            if "device" in inference_overrides:
+                config["inference"]["device"] = safe_text(inference_overrides.get("device"), 40)
+            if "half" in inference_overrides:
+                config["inference"]["half"] = bool(inference_overrides.get("half"))
+        for key in ("imgsz", "device", "half"):
+            if key in overrides:
+                if key == "imgsz":
+                    try:
+                        config["inference"]["imgsz"] = max(1, int(overrides[key]))
+                    except (TypeError, ValueError):
+                        pass
+                elif key == "device":
+                    config["inference"]["device"] = safe_text(overrides.get(key), 40)
+                elif key == "half":
+                    config["inference"]["half"] = bool(overrides.get(key))
 
     return config
-
 
 def safe_name(value, fallback="default"):
     fallback = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in str(fallback or "default"))
@@ -330,6 +405,13 @@ def decode_image_payload(request):
     if Image is None:
         raise RuntimeError("Pillow is not available. Install requirements.txt for image decoding.")
 
+    # 高并发场景优先使用 framePath，避免 Node -> Python 传输超大 base64 字符串。
+    # 路径仍然限制在 PROJECT_ROOT 内，防止越权读取。
+    frame_path = request.get("framePath")
+    if frame_path:
+        safe_path = resolve_inside(PROJECT_ROOT, frame_path)
+        return Image.open(safe_path).convert("RGB")
+
     image_b64 = request.get("image") or request.get("imageBase64") or ""
     if image_b64:
         try:
@@ -338,13 +420,7 @@ def decode_image_payload(request):
             raise ValueError("Invalid base64 image payload") from exc
         return Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-    frame_path = request.get("framePath")
-    if frame_path:
-        safe_path = resolve_inside(PROJECT_ROOT, frame_path)
-        return Image.open(safe_path).convert("RGB")
-
     raise ValueError("Missing image or framePath")
-
 
 def extract_detections(results, model, config):
     detections = []
@@ -381,6 +457,33 @@ def extract_detections(results, model, config):
     return detections
 
 
+def copy_box_detection(detection):
+    bbox = detection.get("bbox") or []
+    return {
+        "label": detection.get("label"),
+        "name": detection.get("name"),
+        "confidence": detection.get("confidence"),
+        "bbox": [int(v) for v in bbox[:4]] if len(bbox) >= 4 else [],
+        "severity": detection.get("severity"),
+    }
+
+
+def prune_hits(hits, now, window_seconds):
+    if window_seconds <= 0:
+        return []
+    cutoff = now - window_seconds
+    return [hit for hit in hits if hit >= cutoff]
+
+
+def build_confirm_message(alert_type, required, count, window_ms):
+    target = DISPLAY_NAMES[alert_type]
+    target_count = f"（{count}个目标）" if count > 1 else ""
+    if window_ms and window_ms > 0:
+        seconds = max(0.1, window_ms / 1000.0)
+        return f"{seconds:g} 秒窗口内 {required} 次检测到{target}{target_count}"
+    return f"连续 {required} 帧检测到{target}{target_count}"
+
+
 class AlertGovernance:
     def __init__(self):
         self._state = {}
@@ -395,20 +498,37 @@ class AlertGovernance:
             label = detection.get("label")
             if label not in ALERT_TYPES:
                 continue
-            current = by_type.get(label)
-            if current is None or detection.get("confidence", 0) > current.get("confidence", 0):
-                by_type[label] = detection
+            by_type.setdefault(label, []).append(detection)
 
         for alert_type in ALERT_TYPE_ORDER:
             state_key = (camera_id, alert_type)
-            state = self._state.setdefault(state_key, {"count": 0, "lastAlertAt": 0.0})
-            detection = by_type.get(alert_type)
-            if not detection:
-                state["count"] = 0
+            state = self._state.setdefault(state_key, {"count": 0, "lastAlertAt": 0.0, "hits": []})
+            matched = by_type.get(alert_type, [])
+            required = max(1, int(config["confirmCounts"].get(alert_type, DEFAULT_CONFIRM_COUNTS[alert_type])))
+            window_ms = max(0, int(config.get("confirmWindowMs", {}).get(alert_type, DEFAULT_CONFIRM_WINDOWS_MS[alert_type])))
+            window_seconds = window_ms / 1000.0
+
+            if window_seconds > 0:
+                state["hits"] = prune_hits(state.get("hits", []), now, window_seconds)
+                if matched:
+                    state["hits"].append(now)
+                    state["hits"] = prune_hits(state["hits"], now, window_seconds)
+                    state["count"] = len(state["hits"])
+                else:
+                    state["count"] = len(state["hits"])
+            else:
+                if not matched:
+                    state["count"] = 0
+                    state["hits"] = []
+                    continue
+                state["count"] += 1
+                state["hits"] = []
+
+            if not matched:
                 continue
 
-            state["count"] += 1
-            required = max(1, int(config["confirmCounts"].get(alert_type, DEFAULT_CONFIRM_COUNTS[alert_type])))
+            top_detection = max(matched, key=lambda item: float(item.get("confidence") or 0))
+            boxes = [copy_box_detection(item) for item in matched]
             cooldown = max(0.0, float(config["cooldowns"].get(alert_type, DEFAULT_COOLDOWNS[alert_type])))
             confirmed = state["count"] >= required
             cooled = (now - state["lastAlertAt"]) >= cooldown
@@ -422,7 +542,7 @@ class AlertGovernance:
                 "categoryCn": alert_category_cn(alert_type),
                 "title": DISPLAY_NAMES[alert_type],
                 "severity": SEVERITY[alert_type],
-                "confidence": detection.get("confidence", 0),
+                "confidence": top_detection.get("confidence", 0),
                 "cameraId": camera_id,
                 "cameraLabel": "",
                 "modelName": "",
@@ -431,19 +551,70 @@ class AlertGovernance:
                 "videoPath": "",
                 "eventId": None,
                 "confirmed": True,
+                "confirmCount": int(state["count"]),
+                "confirmRequired": required,
+                "confirmWindowMs": window_ms,
+                "count": len(matched),
+                "boxes": boxes,
                 "reviewedByQwen": False,
                 "needsReview": False,
                 "reviewReason": "",
-                "message": f"连续 {required} 帧检测到{DISPLAY_NAMES[alert_type]}",
+                "message": build_confirm_message(alert_type, required, len(matched), window_ms),
             })
 
         return alerts
 
-
 GOVERNANCE = AlertGovernance()
 
 
-def save_snapshot(image, camera_id, alert_type, timestamp_ms, snapshot_root=SNAPSHOT_ROOT):
+def draw_alert_boxes(image, boxes, alert_type):
+    if ImageDraw is None or not boxes:
+        return image.copy()
+
+    annotated = image.copy()
+    draw = ImageDraw.Draw(annotated)
+    color = "red" if SEVERITY.get(alert_type) == "critical" else "orange"
+    try:
+        font = ImageFont.load_default() if ImageFont else None
+    except Exception:
+        font = None
+
+    width, height = annotated.size
+    for item in boxes:
+        bbox = item.get("bbox") or []
+        if len(bbox) < 4:
+            continue
+        x1, y1, x2, y2 = [int(v) for v in bbox[:4]]
+        x1 = max(0, min(width - 1, x1))
+        x2 = max(0, min(width - 1, x2))
+        y1 = max(0, min(height - 1, y1))
+        y2 = max(0, min(height - 1, y2))
+        if x2 <= x1 or y2 <= y1:
+            continue
+
+        for offset in range(3):
+            draw.rectangle([x1 - offset, y1 - offset, x2 + offset, y2 + offset], outline=color)
+
+        confidence = item.get("confidence")
+        try:
+            label_conf = f" {float(confidence) * 100:.1f}%"
+        except (TypeError, ValueError):
+            label_conf = ""
+        label = f"{item.get('name') or DISPLAY_NAMES.get(alert_type, alert_type)}{label_conf}"
+
+        text_x = x1
+        text_y = max(0, y1 - 16)
+        try:
+            text_box = draw.textbbox((text_x, text_y), label, font=font)
+            draw.rectangle(text_box, fill=color)
+        except Exception:
+            pass
+        draw.text((text_x, text_y), label, fill="white", font=font)
+
+    return annotated
+
+
+def save_snapshot(image, camera_id, alert_type, timestamp_ms, snapshot_root=SNAPSHOT_ROOT, boxes=None):
     when = timestamp_ms_to_datetime(timestamp_ms)
     day_dir = resolve_inside(snapshot_root, when.strftime("%Y-%m-%d"))
     day_dir.mkdir(parents=True, exist_ok=True)
@@ -463,14 +634,25 @@ def save_snapshot(image, camera_id, alert_type, timestamp_ms, snapshot_root=SNAP
             snapshot_path = resolve_inside(day_dir, file_name)
             suffix += 1
 
-    image.save(snapshot_path, format="JPEG", quality=88)
+    output_image = draw_alert_boxes(image, boxes or [], alert_type)
+    output_image.save(snapshot_path, format="JPEG", quality=88)
     return project_relative(snapshot_path)
+
+def open_alert_db(db_path=ALERT_DB_PATH):
+    conn = sqlite3.connect(Path(db_path), timeout=3.0)
+    conn.execute("PRAGMA busy_timeout=3000")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
 
 
 def ensure_alert_table(db_path=ALERT_DB_PATH):
+    global _ALERT_TABLE_READY
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db_path) as conn:
+    if _ALERT_TABLE_READY:
+        return
+    with open_alert_db(db_path) as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS alerts(
@@ -506,6 +688,7 @@ def ensure_alert_table(db_path=ALERT_DB_PATH):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_camera_created ON alerts(camera_id, created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_category_created ON alerts(category, created_at)")
         conn.commit()
+    _ALERT_TABLE_READY = True
 
 
 def insert_alert_event(alert, timestamp_ms, db_path=ALERT_DB_PATH, raw_event=None):
@@ -516,7 +699,7 @@ def insert_alert_event(alert, timestamp_ms, db_path=ALERT_DB_PATH, raw_event=Non
     except (TypeError, ValueError):
         created_at_ms = int(time.time() * 1000)
     raw_json = json.dumps(raw_event or alert, ensure_ascii=False, sort_keys=True)
-    with sqlite3.connect(db_path) as conn:
+    with open_alert_db(db_path) as conn:
         cursor = conn.execute(
             """
             INSERT INTO alerts(
@@ -551,7 +734,6 @@ def insert_alert_event(alert, timestamp_ms, db_path=ALERT_DB_PATH, raw_event=Non
         )
         conn.commit()
         return cursor.lastrowid
-
 
 def qwen_key_available():
     return bool(os.environ.get("QWEN_API_KEY") or os.environ.get("DASHSCOPE_API_KEY"))
@@ -650,6 +832,27 @@ def build_error_result(message, camera_id="unknown", timestamp_ms=None):
     }
 
 
+def build_predict_kwargs(config):
+    inference = config.get("inference") or {}
+    kwargs = {
+        "verbose": False,
+        "conf": min(config["thresholds"].values()),
+    }
+    imgsz = inference.get("imgsz")
+    try:
+        imgsz = int(imgsz)
+        if imgsz > 0:
+            kwargs["imgsz"] = imgsz
+    except (TypeError, ValueError):
+        pass
+    device = safe_text(inference.get("device"), 40)
+    if device:
+        kwargs["device"] = device
+    if bool(inference.get("half")):
+        kwargs["half"] = True
+    return kwargs
+
+
 def analyze_request(request):
     start = time.time()
     camera_id = safe_name(request.get("cameraId") or "active", "active")
@@ -669,9 +872,13 @@ def analyze_request(request):
     except Exception as exc:
         return build_error_result(exc, camera_id, timestamp_ms)
 
+    predict_kwargs = build_predict_kwargs(config)
     try:
-        min_conf = min(config["thresholds"].values())
-        results = model.predict(image, verbose=False, conf=min_conf)
+        results = model.predict(image, **predict_kwargs)
+    except TypeError:
+        # 兼容旧版 ultralytics 或自定义模型封装：逐步降级掉高级推理参数。
+        fallback_kwargs = {"verbose": False, "conf": predict_kwargs["conf"]}
+        results = model.predict(image, **fallback_kwargs)
     except AttributeError:
         results = model(image, verbose=False)
 
@@ -685,6 +892,9 @@ def analyze_request(request):
         "latencyMs": int((time.time() - start) * 1000),
         "qwenReviewed": False,
         "qwenReviewEnabled": bool(config.get("qwenReview")),
+        "confirmWindowMs": config.get("confirmWindowMs", {}),
+        "inference": config.get("inference", {}),
+        "frameSource": "framePath" if request.get("framePath") else "base64",
         "snapshotErrors": [],
         "sqliteErrors": [],
     }
@@ -696,7 +906,7 @@ def analyze_request(request):
         alert["modelName"] = meta["model"]
         alert["skillId"] = SKILL_NAME
         try:
-            alert["snapshotPath"] = save_snapshot(image, camera_id, alert["type"], timestamp_ms)
+            alert["snapshotPath"] = save_snapshot(image, camera_id, alert["type"], timestamp_ms, boxes=alert.get("boxes"))
         except Exception as exc:
             alert["snapshotError"] = str(exc)
             meta["snapshotErrors"].append(str(exc))
