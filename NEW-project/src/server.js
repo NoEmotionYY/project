@@ -518,7 +518,8 @@ function writeCameraJsonLog(cameraId, result) {
 // ==========================================
 const VIDEO_RECORD_DIR = resolveInside(PROJECT_ROOT, safeName(process.env.RECORDINGS_DIR || 'recordings', 'recordings'));
 const RECORD_FPS = 15;                 // 录制帧率
-const RECORD_SEGMENT_MIN = 10;         // 每 10 分钟分段一个文件const RECORD_MIN_INTERVAL_MS = 1000 / RECORD_FPS;// 写入帧最小间隔
+const RECORD_SEGMENT_MIN = 10;         // 每 10 分钟分段一个文件
+const RECORD_MIN_INTERVAL_MS = 1000 / RECORD_FPS;// 写入帧最小间隔
 const videoRecorders = new Map(); // camId -> { process, filePath, startTime, lastWriteTime }
 
 function getRecordingCamId(camId) {

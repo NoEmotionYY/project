@@ -1,9 +1,13 @@
-require('dotenv').config();
-const { app, BrowserWindow, ipcMain, session, Menu, dialog } = require('electron');
-const { spawn, fork } = require('child_process');
+require('dotenv').config({ quiet: true });
+
+const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
+const { spawn, fork, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const https = require('https');
+
+const { findAvailablePort } = require('./src/port-utils');
 
 // ==========================================
 // 全局状态
@@ -12,22 +16,46 @@ let mainWindow;
 let nodeProcess = null;
 let nginxProcess = null;
 let isServicesRunning = false;
+let servicesManagedByThisProcess = false;
+let stoppingServices = false;
+
 let actualNodePort = Number(process.env.NODE_PORT || process.env.PORT || 8082);
 let actualNginxPort = Number(process.env.NGINX_PORT || 8443);
+
 const managedChildren = new Set();
 
-const { findAvailablePort } = require('./src/port-utils');
-
-// 日志工具：打包后存到 exe 同级目录，开发模式存到 userData
 let LOG_DIR;
 let SERVER_LOG;
 
+// ==========================================
+// Electron 启动参数
+// ==========================================
+app.commandLine.appendSwitch('allow-insecure-localhost');
+app.commandLine.appendSwitch('ignore-connections-limit', '127.0.0.1');
+
+app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  if (
+    url.startsWith('https://127.0.0.1') ||
+    url.startsWith('https://localhost')
+  ) {
+    event.preventDefault();
+    callback(true);
+    return;
+  }
+
+  callback(false);
+});
+
+// ==========================================
+// 日志
+// ==========================================
 function initLogDir() {
   if (LOG_DIR) return;
-  const isPackaged = app.isPackaged;
-  LOG_DIR = isPackaged
+
+  LOG_DIR = app.isPackaged
     ? path.join(path.dirname(process.execPath), 'logs')
     : path.join(app.getPath('userData'), 'logs');
+
   SERVER_LOG = path.join(LOG_DIR, 'main.log');
 }
 
@@ -43,53 +71,71 @@ function logToFile(tag, message) {
     ensureLogDir();
     const time = new Date().toISOString();
     fs.appendFileSync(SERVER_LOG, `[${time}] [${tag}] ${message}\n`, 'utf-8');
-  } catch (e) { console.error('logToFile error:', e.message); }
+  } catch (e) {
+    console.error('logToFile error:', e.message);
+  }
 }
 
 function trackChild(child) {
   if (child && child.pid) {
     managedChildren.add(child);
+
     const untrack = () => managedChildren.delete(child);
+
     child.once('exit', untrack);
     child.once('close', untrack);
   }
+
   return child;
 }
-
-// 忽略自签名证书错误
-app.commandLine.appendSwitch('ignore-certificate-errors');
-app.commandLine.appendSwitch('allow-insecure-localhost');
-app.commandLine.appendSwitch('ignore-connections-limit', '127.0.0.1');
 
 // ==========================================
 // 工具函数
 // ==========================================
 function getLanIp() {
   const ips = [];
-  const virtualKeywords = ['vmware', 'virtualbox', 'docker', 'vpn', 'tun', 'tap', 'ppp', 'mihomo', 'veth', 'hyper-v'];
+  const virtualKeywords = [
+    'vmware',
+    'virtualbox',
+    'docker',
+    'vpn',
+    'tun',
+    'tap',
+    'ppp',
+    'mihomo',
+    'veth',
+    'hyper-v'
+  ];
+
   const interfaces = os.networkInterfaces();
 
   for (const name of Object.keys(interfaces)) {
     const lowerName = name.toLowerCase();
     const isVirtual = virtualKeywords.some(v => lowerName.includes(v));
-    for (const iface of interfaces[name]) {
+
+    for (const iface of interfaces[name] || []) {
       if (iface.family !== 'IPv4') continue;
       if (iface.internal) continue;
       if (isVirtual) continue;
       if (iface.address.startsWith('169.254.')) continue;
       if (iface.address.startsWith('198.18.') || iface.address.startsWith('198.19.')) continue;
+
       ips.push(iface.address);
     }
   }
+
   return ips.length > 0 ? ips[0] : '127.0.0.1';
 }
 
 function copyDir(src, dest) {
   fs.mkdirSync(dest, { recursive: true });
+
   const entries = fs.readdirSync(src, { withFileTypes: true });
+
   for (const entry of entries) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
+
     if (entry.isDirectory()) {
       copyDir(srcPath, destPath);
     } else {
@@ -99,13 +145,17 @@ function copyDir(src, dest) {
 }
 
 function getNginxPlatformBinary() {
-  const map = { win32: 'nginx-win.exe', darwin: 'nginx-mac', linux: 'nginx-linux' };
+  const map = {
+    win32: 'nginx-win.exe',
+    darwin: 'nginx-mac',
+    linux: 'nginx-linux'
+  };
+
   return map[process.platform] || 'nginx-linux';
 }
 
 function getNginxSourceDir() {
-  const isDev = !app.isPackaged;
-  return isDev
+  return !app.isPackaged
     ? path.join(__dirname, 'nginx')
     : path.join(process.resourcesPath, 'nginx-runtime');
 }
@@ -118,31 +168,54 @@ function ensureNginxRuntime() {
   const source = getNginxSourceDir();
   const runtime = getNginxRuntimeDir();
 
+  if (!fs.existsSync(source)) {
+    throw new Error(`nginx 源目录不存在: ${source}`);
+  }
+
   const nginxBin = path.join(runtime, 'bin', getNginxPlatformBinary());
+
   if (!fs.existsSync(runtime) || !fs.existsSync(nginxBin)) {
     copyDir(source, runtime);
   }
 
-  // 复制 UI 文件到 nginx 的 html 目录（用于 nginx 独立部署的前端）
   const uiSource = path.join(__dirname, 'html');
   const uiDest = path.join(runtime, 'html');
+
   if (fs.existsSync(uiSource)) {
-    const uiFiles = fs.readdirSync(uiSource);
-    for (const file of uiFiles) {
-      fs.copyFileSync(path.join(uiSource, file), path.join(uiDest, file));
+    fs.mkdirSync(uiDest, { recursive: true });
+
+    const uiFiles = fs.readdirSync(uiSource, { withFileTypes: true });
+
+    for (const entry of uiFiles) {
+      const srcPath = path.join(uiSource, entry.name);
+      const destPath = path.join(uiDest, entry.name);
+
+      if (entry.isDirectory()) {
+        copyDir(srcPath, destPath);
+      } else {
+        fs.copyFileSync(srcPath, destPath);
+      }
     }
   }
 
-  // 确保证书文件始终最新（即使运行时目录已存在）
   const certSource = path.join(source, 'cert.pem');
   const keySource = path.join(source, 'key.pem');
   const certDest = path.join(runtime, 'cert.pem');
   const keyDest = path.join(runtime, 'key.pem');
+
   if (fs.existsSync(certSource)) fs.copyFileSync(certSource, certDest);
   if (fs.existsSync(keySource)) fs.copyFileSync(keySource, keyDest);
 
-  // 确保临时目录存在
-  const temps = ['logs', 'temp', 'temp/client_body_temp', 'temp/proxy_temp', 'temp/fastcgi_temp', 'temp/uwsgi_temp', 'temp/scgi_temp'];
+  const temps = [
+    'logs',
+    'temp',
+    'temp/client_body_temp',
+    'temp/proxy_temp',
+    'temp/fastcgi_temp',
+    'temp/uwsgi_temp',
+    'temp/scgi_temp'
+  ];
+
   for (const t of temps) {
     fs.mkdirSync(path.join(runtime, t), { recursive: true });
   }
@@ -152,6 +225,10 @@ function ensureNginxRuntime() {
 
 function writeNginxConf(nginxDir, nodePort = 8082, nginxPort = 8443) {
   const confPath = path.join(nginxDir, 'conf', 'nginx.conf');
+  const confDir = path.dirname(confPath);
+
+  fs.mkdirSync(confDir, { recursive: true });
+
   const certPath = path.join(nginxDir, 'cert.pem').replace(/\\/g, '/');
   const keyPath = path.join(nginxDir, 'key.pem').replace(/\\/g, '/');
   const htmlPath = path.join(nginxDir, 'html').replace(/\\/g, '/');
@@ -159,6 +236,7 @@ function writeNginxConf(nginxDir, nodePort = 8082, nginxPort = 8443) {
   const logsPath = path.join(nginxDir, 'logs').replace(/\\/g, '/');
 
   const conf = `worker_processes  1;
+daemon off;
 error_log ${logsPath}/error.log;
 pid ${logsPath}/nginx.pid;
 
@@ -215,7 +293,6 @@ http {
             default_type text/html;
         }
 
-        # 反向代理：前端同域请求自动转发到 Node.js 后端
         location /events {
             alias  ${htmlPath}/events.html;
             default_type text/html;
@@ -245,69 +322,228 @@ http {
         location /api/ {
             proxy_pass https://127.0.0.1:${nodePort}/api/;
             proxy_http_version 1.1;
+            proxy_ssl_verify off;
         }
 
         location /offer {
             proxy_pass https://127.0.0.1:${nodePort}/offer;
             proxy_http_version 1.1;
+            proxy_ssl_verify off;
         }
     }
 }
 `;
+
   fs.writeFileSync(confPath, conf, 'utf-8');
 }
 
-// ==========================================
-// 服务管理
-// ==========================================
-async function waitForBackend(port, timeoutMs) {
-  const https = require('https');
+function waitForUrl(url, timeoutMs = 10000) {
   const start = Date.now();
+
   return new Promise((resolve) => {
     const check = () => {
       if (Date.now() - start > timeoutMs) {
         resolve(false);
         return;
       }
-      const req = https.get(`https://127.0.0.1:${port}/api/info`, {
-        rejectUnauthorized: false,
-        timeout: 2000,
-      }, (res) => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(true);
-        } else {
-          setTimeout(check, 500);
+
+      const req = https.get(
+        url,
+        {
+          rejectUnauthorized: false,
+          timeout: 2000,
+        },
+        (res) => {
+          res.resume();
+
+          if (res.statusCode >= 200 && res.statusCode < 500) {
+            resolve(true);
+          } else {
+            setTimeout(check, 500);
+          }
         }
-      });
+      );
+
       req.on('error', () => {
         setTimeout(check, 500);
       });
+
       req.on('timeout', () => {
         req.destroy();
         setTimeout(check, 500);
       });
     };
-    // 先等 1 秒让进程启动
-    setTimeout(check, 1000);
+
+    check();
   });
 }
 
-async function startServices(customNodePort, customNginxPort) {
-  if (isServicesRunning) {
-    return { success: true, lanIp: getLanIp(), nodePort: actualNodePort, nginxPort: actualNginxPort };
+async function waitForBackend(port, timeoutMs) {
+  return waitForUrl(`https://127.0.0.1:${port}/api/info`, timeoutMs);
+}
+
+function testNginxConfig(nginxDir) {
+  const nginxBin = path.join(nginxDir, 'bin', getNginxPlatformBinary());
+  const confPath = path.join(nginxDir, 'conf', 'nginx.conf');
+
+  const result = spawnSync(
+    nginxBin,
+    ['-p', nginxDir, '-c', confPath, '-t'],
+    {
+      encoding: 'utf-8',
+      timeout: 8000,
+      windowsHide: true,
+    }
+  );
+
+  const output = `${result.stdout || ''}${result.stderr || ''}`.trim();
+
+  if (result.error) {
+    throw new Error(`nginx 配置测试无法启动: ${result.error.message}`);
   }
 
-  // 0. 检测端口
-  console.log('[端口] 检测可用端口...');
+  if (result.status !== 0) {
+    throw new Error(`nginx 配置测试失败:\n${output}`);
+  }
+
+  if (output) {
+    logToFile('NGINX-TEST', output);
+  }
+}
+
+function stopNginxByCommand(signal = 'quit') {
   try {
-    // 如果传入了自定义端口，从自定义端口开始检测；否则使用默认端口
-    const nodeStartPort = customNodePort ? parseInt(customNodePort, 10) : 8082;
-    const nginxStartPort = customNginxPort ? parseInt(customNginxPort, 10) : 8443;
+    const nginxDir = getNginxRuntimeDir();
+    const nginxBin = path.join(nginxDir, 'bin', getNginxPlatformBinary());
+    const confPath = path.join(nginxDir, 'conf', 'nginx.conf');
+
+    if (!fs.existsSync(nginxBin) || !fs.existsSync(confPath)) {
+      return {
+        ok: false,
+        skipped: true,
+        output: ''
+      };
+    }
+
+    const result = spawnSync(
+      nginxBin,
+      ['-p', nginxDir, '-c', confPath, '-s', signal],
+      {
+        encoding: 'utf-8',
+        timeout: 5000,
+        windowsHide: true,
+      }
+    );
+
+    const output = `${result.stdout || ''}${result.stderr || ''}`.trim();
+
+    logToFile('NGINX', `${signal} status=${result.status}, output=${output}`);
+
+    return {
+      ok: result.status === 0,
+      skipped: false,
+      status: result.status,
+      output
+    };
+  } catch (e) {
+    logToFile('NGINX', `${signal} failed: ${e.message}`);
+
+    return {
+      ok: false,
+      skipped: false,
+      error: e.message,
+      output: ''
+    };
+  }
+}
+
+function stopNginxGracefully() {
+  const quitResult = stopNginxByCommand('quit');
+
+  if (quitResult && quitResult.ok) {
+    return true;
+  }
+
+  const stopResult = stopNginxByCommand('stop');
+
+  return Boolean(stopResult && stopResult.ok);
+}
+
+async function killProcess(proc, label, timeoutMs = 3000) {
+  if (!proc) return;
+
+  const pid = proc.pid;
+
+  try {
+    if (!proc.killed) {
+      proc.kill();
+    }
+  } catch (_) {}
+
+  await waitForProcessExit(proc, timeoutMs);
+
+  if (pid && process.platform === 'win32') {
+    try {
+      spawnSync('taskkill', ['/T', '/F', '/PID', String(pid)], {
+        windowsHide: true,
+        timeout: 3000
+      });
+
+      console.log(`[清理] 已强制终止 ${label} PID ${pid}`);
+    } catch (_) {}
+  }
+}
+
+async function cleanupStartedServices() {
+  if (nodeProcess) {
+    const np = nodeProcess;
+    nodeProcess = null;
+    await killProcess(np, 'Node.js');
+  }
+
+  stopNginxGracefully();
+
+  if (nginxProcess) {
+    const np = nginxProcess;
+    nginxProcess = null;
+    await killProcess(np, 'nginx');
+  }
+
+  await cleanupManagedChildren();
+}
+
+// ==========================================
+// 服务管理
+// ==========================================
+async function startServices(customNodePort, customNginxPort) {
+  if (isServicesRunning) {
+    return {
+      success: true,
+      lanIp: getLanIp(),
+      nodePort: actualNodePort,
+      nginxPort: actualNginxPort
+    };
+  }
+
+  console.log('[端口] 检测可用端口...');
+
+  try {
+    const nodeStartPort = customNodePort
+      ? parseInt(customNodePort, 10)
+      : Number(process.env.NODE_PORT || process.env.PORT || 8082);
+
+    const nginxStartPort = customNginxPort
+      ? parseInt(customNginxPort, 10)
+      : Number(process.env.NGINX_PORT || 8443);
+
     actualNodePort = await findAvailablePort(nodeStartPort);
     actualNginxPort = await findAvailablePort(nginxStartPort);
+
     console.log(`[端口] Node.js: ${actualNodePort}, nginx: ${actualNginxPort}`);
+    logToFile('MAIN', `ports node=${actualNodePort}, nginx=${actualNginxPort}`);
   } catch (e) {
     console.error('[端口]', e.message);
+    logToFile('MAIN', `port check failed: ${e.message}`);
     throw e;
   }
 
@@ -315,25 +551,34 @@ async function startServices(customNodePort, customNginxPort) {
     // 1. 准备 nginx 运行时目录
     const nginxDir = ensureNginxRuntime();
     writeNginxConf(nginxDir, actualNodePort, actualNginxPort);
+    testNginxConfig(nginxDir);
 
     // 2. 设置环境变量
     const settings = loadSettings();
     const isPackaged = app.isPackaged;
-    // 打包后 node_modules 在 app.asar 内，asarUnpack 的模块在 app.asar.unpacked，都要加入 NODE_PATH
+
     const asarNodeModules = isPackaged
       ? path.join(process.resourcesPath, 'app.asar', 'node_modules')
       : null;
+
     const asarUnpackedNodeModules = isPackaged
       ? path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules')
       : null;
-    const nodePaths = [asarNodeModules, process.env.NODE_PATH, asarUnpackedNodeModules].filter(Boolean).join(path.delimiter);
+
+    const nodePaths = [
+      asarNodeModules,
+      process.env.NODE_PATH,
+      asarUnpackedNodeModules
+    ].filter(Boolean).join(path.delimiter);
 
     const certPath = isPackaged
       ? path.join(process.resourcesPath, 'cert.pem')
       : path.join(__dirname, 'cert.pem');
+
     const keyPath = isPackaged
       ? path.join(process.resourcesPath, 'key.pem')
       : path.join(__dirname, 'key.pem');
+
     const htmlDirPath = isPackaged
       ? path.join(process.resourcesPath, 'app.asar', 'html')
       : path.join(__dirname, 'html');
@@ -341,7 +586,7 @@ async function startServices(customNodePort, customNginxPort) {
     const env = {
       ...process.env,
       ELECTRON_RUN: '1',
-      LOG_DIR: LOG_DIR,
+      LOG_DIR,
       CORS_ORIGIN: '*',
       PORT: String(actualNodePort),
       NODE_PORT: String(actualNodePort),
@@ -355,21 +600,24 @@ async function startServices(customNodePort, customNginxPort) {
 
     // 3. 启动 Node.js 后端
     let serverPath = path.join(__dirname, 'src', 'server.js');
-    // 打包后 src 被解压到 app.asar.unpacked，需要替换路径
+
     if (app.isPackaged) {
       serverPath = serverPath.replace('app.asar', 'app.asar.unpacked');
     }
+
     logToFile('MAIN', `serverPath=${serverPath}, exists=${fs.existsSync(serverPath)}`);
 
+    if (!fs.existsSync(serverPath)) {
+      throw new Error(`后端入口不存在: ${serverPath}`);
+    }
+
     if (app.isPackaged) {
-      // 打包后：直接用 fork（electron-rebuild 已确保 native 模块兼容）
       nodeProcess = trackChild(fork(serverPath, [], {
         cwd: path.dirname(serverPath),
         silent: true,
         env,
       }));
     } else {
-      // 开发模式：用系统 Node.js 避免 ABI 不兼容
       nodeProcess = trackChild(fork(serverPath, [], {
         cwd: __dirname,
         silent: true,
@@ -378,11 +626,11 @@ async function startServices(customNodePort, customNginxPort) {
       }));
     }
 
-    // 捕获子进程日志到文件
     nodeProcess.stdout.on('data', (data) => {
       const text = data.toString().trim();
       if (text) logToFile('NODE', text);
     });
+
     nodeProcess.stderr.on('data', (data) => {
       const text = data.toString().trim();
       if (text) logToFile('NODE-ERR', text);
@@ -393,30 +641,36 @@ async function startServices(customNodePort, customNginxPort) {
       logToFile('MAIN', `Node.js fork error: ${err.message}`);
     });
 
-    nodeProcess.on('exit', (code) => {
-      console.log(`[Node.js] 进程退出，code=${code}`);
-      logToFile('MAIN', `Node.js exited with code ${code}`);
+    nodeProcess.on('exit', (code, signal) => {
+      console.log(`[Node.js] 进程退出，code=${code}, signal=${signal || ''}`);
+      logToFile('MAIN', `Node.js exited with code=${code}, signal=${signal || ''}`);
+
       nodeProcess = null;
-      if (isServicesRunning) {
+
+      if (isServicesRunning && servicesManagedByThisProcess && !stoppingServices) {
         isServicesRunning = false;
+
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('service-status', { running: false });
         }
       }
     });
 
-    // 监听 Node.js 子进程的 IPC 消息（RTSP 状态、技能状态等）
     nodeProcess.on('message', (msg) => {
       if (!msg || !msg.type) return;
+
       if (msg.type === 'rtsp-status' && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('rtsp-status', msg.data);
       }
+
       if (msg.type === 'skill-loaded' && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('skill-loaded', msg.data);
       }
+
       if (msg.type === 'skill-error' && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('skill-error', msg.error);
       }
+
       if (msg.type === 'skill-list' && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('skill-list', msg.data);
       }
@@ -424,13 +678,21 @@ async function startServices(customNodePort, customNginxPort) {
 
     // 4. 启动 nginx
     const nginxBin = path.join(nginxDir, 'bin', getNginxPlatformBinary());
-    // macOS/Linux: 修复从 asar 解压后丢失的可执行权限
-    if (process.platform !== 'win32') {
-      try { fs.chmodSync(nginxBin, 0o755); } catch (_) {}
+    const nginxConf = path.join(nginxDir, 'conf', 'nginx.conf');
+
+    if (!fs.existsSync(nginxBin)) {
+      throw new Error(`nginx 可执行文件不存在: ${nginxBin}`);
     }
+
+    if (process.platform !== 'win32') {
+      try {
+        fs.chmodSync(nginxBin, 0o755);
+      } catch (_) {}
+    }
+
     nginxProcess = trackChild(spawn(nginxBin, [
       '-p', nginxDir,
-      '-c', path.join(nginxDir, 'conf', 'nginx.conf'),
+      '-c', nginxConf,
     ], {
       stdio: 'ignore',
       windowsHide: true,
@@ -441,100 +703,148 @@ async function startServices(customNodePort, customNginxPort) {
       logToFile('MAIN', `nginx error: ${err.message}`);
     });
 
-    nginxProcess.on('exit', (code) => {
-      console.log(`[nginx] 进程退出，code=${code}`);
-      logToFile('MAIN', `nginx exited with code ${code}`);
+    nginxProcess.on('exit', (code, signal) => {
+      console.log(`[nginx] 进程退出，code=${code}, signal=${signal || ''}`);
+      logToFile('MAIN', `nginx exited with code=${code}, signal=${signal || ''}`);
+
       nginxProcess = null;
+
+      if (isServicesRunning && servicesManagedByThisProcess && !stoppingServices) {
+        isServicesRunning = false;
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('service-status', { running: false });
+        }
+      }
     });
 
-    // 5. 添加 Windows 防火墙规则（允许局域网访问）
+    // 5. 添加 Windows 防火墙规则
     if (process.platform === 'win32') {
       const addRule = (name, port) => {
-        trackChild(spawn('netsh', ['advfirewall', 'firewall', 'add', 'rule',
-          `name=${name}`, 'dir=in', 'action=allow',
-          'protocol=TCP', `localport=${port}`
-        ], { stdio: 'ignore', windowsHide: true }));
+        trackChild(spawn('netsh', [
+          'advfirewall',
+          'firewall',
+          'add',
+          'rule',
+          `name=${name}`,
+          'dir=in',
+          'action=allow',
+          'protocol=TCP',
+          `localport=${port}`
+        ], {
+          stdio: 'ignore',
+          windowsHide: true
+        }));
       };
+
       addRule('真視眼 CYPHER (nginx HTTPS)', String(actualNginxPort));
       addRule('真視眼 CYPHER (Node.js 后端)', String(actualNodePort));
     }
 
-    // 6. 等待后端实际启动成功（轮询 /api/info，最多 10 秒）
+    // 6. 等待后端启动
     const lanIp = getLanIp();
-    const started = await waitForBackend(actualNodePort, 10000);
-    if (!started) {
-      logToFile('MAIN', 'Backend failed to start within 10s');
+
+    const backendStarted = await waitForBackend(actualNodePort, 15000);
+
+    if (!backendStarted) {
+      logToFile('MAIN', 'Backend failed to start within 15s');
       throw new Error('后端服务启动失败，请检查日志: ' + SERVER_LOG);
     }
 
-    isServicesRunning = true;
+    // 7. 等待 nginx 前端启动
+    const nginxStarted = await waitForUrl(
+      `https://127.0.0.1:${actualNginxPort}/dashboard`,
+      15000
+    );
 
-    // 通知 renderer
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('service-status', { running: true, lanIp });
+    if (!nginxStarted) {
+      logToFile('MAIN', 'nginx failed to start within 15s');
+      throw new Error('nginx 前端启动失败，请检查日志: ' + SERVER_LOG);
     }
 
-    return { success: true, lanIp, nodePort: actualNodePort, nginxPort: actualNginxPort };
+    isServicesRunning = true;
+    servicesManagedByThisProcess = true;
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('service-status', {
+        running: true,
+        lanIp,
+        nodePort: actualNodePort,
+        nginxPort: actualNginxPort
+      });
+    }
+
+    return {
+      success: true,
+      lanIp,
+      nodePort: actualNodePort,
+      nginxPort: actualNginxPort
+    };
   } catch (err) {
+    logToFile('MAIN', `startServices failed: ${err.stack || err.message}`);
+
+    await cleanupStartedServices().catch((cleanupErr) => {
+      logToFile('MAIN', `cleanup after start failure failed: ${cleanupErr.stack || cleanupErr.message}`);
+    });
+
     throw err;
   }
 }
 
 async function stopServices() {
-  isServicesRunning = false;
-
-  // 1. 优雅停止 Node.js 后端
-  if (nodeProcess) {
-    const np = nodeProcess;
-    const pid = np.pid;
-    nodeProcess = null;
-    np.kill();
-    // 等待进程退出，最多 3 秒
-    await waitForProcessExit(np, 3000);
-    // 兜底：如果进程还在，用 taskkill 强制终止（/T 同时终止子进程）
-    if (pid && process.platform === 'win32') {
-      try {
-        require('child_process').spawnSync('taskkill', ['/T', '/F', '/PID', String(pid)], { windowsHide: true, timeout: 3000 });
-        console.log(`[清理] 已强制终止 Node.js PID ${pid}`);
-      } catch (_) {}
-    }
+  if (stoppingServices) {
+    return {
+      success: true,
+      alreadyStopping: true
+    };
   }
 
-  // 2. 优雅停止 nginx（使用 nginx -s stop）
-  if (nginxProcess) {
-    const np = nginxProcess;
-    const pid = np.pid;
-    const nginxDir = getNginxRuntimeDir();
-    const nginxBin = path.join(nginxDir, 'bin', getNginxPlatformBinary());
+  stoppingServices = true;
 
-    // 先尝试用 nginx 自身的 stop 命令
-    try {
-      const stopResult = require('child_process').spawnSync(nginxBin, ['-s', 'stop', '-p', nginxDir], { timeout: 5000, windowsHide: true });
-      console.log('[nginx] 发送 stop 命令, 状态:', stopResult.status);
-    } catch (e) {
-      console.warn('[nginx] stop 命令失败:', e.message);
+  try {
+    isServicesRunning = false;
+
+    // 如果服务不是当前 Electron 启动的，例如 node dev.js --electron 场景，不主动杀外部服务
+    if (!servicesManagedByThisProcess) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('service-status', { running: false });
+      }
+
+      return {
+        success: true,
+        skipped: true
+      };
     }
 
-    // 等待进程退出，最多 3 秒
-    await waitForProcessExit(np, 3000);
-    nginxProcess = null;
-    // 兜底：如果进程还在，用 taskkill 强制终止（/T 同时终止子进程）
-    if (pid && process.platform === 'win32') {
-      try {
-        require('child_process').spawnSync('taskkill', ['/T', '/F', '/PID', String(pid)], { windowsHide: true, timeout: 3000 });
-        console.log(`[清理] 已强制终止 nginx PID ${pid}`);
-      } catch (_) {}
+    if (nodeProcess) {
+      const np = nodeProcess;
+      nodeProcess = null;
+      await killProcess(np, 'Node.js');
     }
+
+    // 无论 nginxProcess 是否存在，都尝试用 nginx 自己停
+    stopNginxGracefully();
+
+    if (nginxProcess) {
+      const np = nginxProcess;
+      nginxProcess = null;
+      await killProcess(np, 'nginx');
+    }
+
+    await cleanupManagedChildren();
+
+    servicesManagedByThisProcess = false;
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('service-status', { running: false });
+    }
+
+    return {
+      success: true
+    };
+  } finally {
+    stoppingServices = false;
   }
-
-  // 3. 兜底：只清理当前应用记录过的子进程
-  await cleanupManagedChildren();
-
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('service-status', { running: false });
-  }
-
-  return { success: true };
 }
 
 function waitForProcessExit(proc, timeoutMs) {
@@ -543,11 +853,16 @@ function waitForProcessExit(proc, timeoutMs) {
       resolve();
       return;
     }
+
     const timer = setTimeout(() => {
-      try { proc.kill('SIGKILL'); } catch (_) {}
+      try {
+        proc.kill('SIGKILL');
+      } catch (_) {}
+
       resolve();
     }, timeoutMs);
-    proc.on('exit', () => {
+
+    proc.once('exit', () => {
       clearTimeout(timer);
       resolve();
     });
@@ -561,8 +876,12 @@ async function cleanupManagedChildren() {
         managedChildren.delete(child);
         continue;
       }
+
       if (process.platform === 'win32') {
-        require('child_process').spawnSync('taskkill', ['/T', '/F', '/PID', String(child.pid)], { windowsHide: true, timeout: 3000 });
+        spawnSync('taskkill', ['/T', '/F', '/PID', String(child.pid)], {
+          windowsHide: true,
+          timeout: 3000
+        });
       } else {
         child.kill('SIGTERM');
       }
@@ -572,10 +891,43 @@ async function cleanupManagedChildren() {
   }
 }
 
+async function loadDashboardWithServices() {
+  const dashboardUrl = () => `https://127.0.0.1:${actualNginxPort}/dashboard`;
+
+  // 兼容 dev.js --electron：
+  // 如果外部已经把 nginx 启起来了，Electron 直接打开，不再重复启动服务。
+  const existingNginxReady = await waitForUrl(dashboardUrl(), 2500);
+
+  if (existingNginxReady) {
+    isServicesRunning = true;
+    servicesManagedByThisProcess = false;
+
+    const lanIp = getLanIp();
+
+    logToFile('MAIN', `Using existing nginx dashboard: ${dashboardUrl()}`);
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('service-status', {
+        running: true,
+        lanIp,
+        nodePort: actualNodePort,
+        nginxPort: actualNginxPort
+      });
+    }
+
+    await mainWindow.loadURL(dashboardUrl());
+    return;
+  }
+
+  // 直接运行 Electron 的场景：由 Electron 自己启动服务。
+  await startServices(process.env.NODE_PORT || process.env.PORT, process.env.NGINX_PORT);
+  await mainWindow.loadURL(dashboardUrl());
+}
+
 // ==========================================
 // 窗口管理
 // ==========================================
-function createWindow() {
+async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -590,8 +942,17 @@ function createWindow() {
     title: '真視眼 CYPHER',
   });
 
-  // 加载新版 dashboard 主界面；/monitor 仅保留兼容入口。
-  mainWindow.loadFile(path.join(__dirname, 'html', 'dashboard.html'));
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    logToFile('WINDOW', `did-fail-load code=${errorCode}, desc=${errorDescription}, url=${validatedURL}`);
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    logToFile('WINDOW', `render-process-gone: ${JSON.stringify(details)}`);
+  });
+
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    logToFile('RENDER', `[level=${level}] ${message} (${sourceId}:${line})`);
+  });
 
   const template = [
     {
@@ -623,18 +984,29 @@ function createWindow() {
       ]
     }
   ];
+
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
 
-  // 信任自签名证书
-  app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-    event.preventDefault();
-    callback(true);
-  });
+  try {
+    await loadDashboardWithServices();
+  } catch (err) {
+    logToFile('MAIN', `loadDashboardWithServices failed: ${err.stack || err.message}`);
 
-  session.defaultSession.setCertificateVerifyProc((request, callback) => {
-    callback(0);
-  });
+    const controlPath = path.join(__dirname, 'html', 'control.html');
+
+    if (fs.existsSync(controlPath)) {
+      await mainWindow.loadFile(controlPath);
+    } else {
+      await dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: '启动失败',
+        message: '服务启动失败，且 control.html 不存在。',
+        detail: `${err.message}\n\n日志路径：${SERVER_LOG || '未知'}`,
+        buttons: ['确定']
+      });
+    }
+  }
 }
 
 // ==========================================
@@ -643,23 +1015,38 @@ function createWindow() {
 ipcMain.handle('start-services', async (_event, customNodePort, customNginxPort) => {
   try {
     const result = await startServices(customNodePort, customNginxPort);
-    return { ...result, nodePort: actualNodePort, nginxPort: actualNginxPort };
+
+    return {
+      ...result,
+      nodePort: actualNodePort,
+      nginxPort: actualNginxPort
+    };
   } catch (err) {
-    return { success: false, error: err.message };
+    return {
+      success: false,
+      error: err.message
+    };
   }
 });
 
 ipcMain.handle('get-ports', () => {
-  return { nodePort: actualNodePort, nginxPort: actualNginxPort };
+  return {
+    nodePort: actualNodePort,
+    nginxPort: actualNginxPort
+  };
 });
 
 ipcMain.handle('stop-services', async () => {
-  const result = await stopServices();
-  return result;
+  return stopServices();
 });
 
 ipcMain.handle('get-service-status', () => {
-  return { running: isServicesRunning };
+  return {
+    running: isServicesRunning,
+    managed: servicesManagedByThisProcess,
+    nodePort: actualNodePort,
+    nginxPort: actualNginxPort
+  };
 });
 
 ipcMain.handle('get-lan-ip', () => {
@@ -669,39 +1056,68 @@ ipcMain.handle('get-lan-ip', () => {
 // RTSP 相关 IPC
 ipcMain.handle('connect-rtsp', async (_event, url) => {
   if (!nodeProcess) {
-    return { success: false, error: '后端服务未运行，请先启动服务' };
+    return {
+      success: false,
+      error: '后端服务未运行，请先启动服务'
+    };
   }
+
   return new Promise((resolve) => {
     nodeProcess.send({ type: 'start-rtsp', url });
+
     const onMessage = (msg) => {
       if (msg && msg.type === 'rtsp-status') {
         nodeProcess.removeListener('message', onMessage);
         clearTimeout(timer);
-        resolve({ success: true, ...msg.data });
+
+        resolve({
+          success: true,
+          ...msg.data
+        });
       }
     };
+
     nodeProcess.on('message', onMessage);
+
     const timer = setTimeout(() => {
       nodeProcess.removeListener('message', onMessage);
-      resolve({ success: true, status: 'connecting' });
+
+      resolve({
+        success: true,
+        status: 'connecting'
+      });
     }, 3000);
   });
 });
 
 ipcMain.handle('disconnect-rtsp', async () => {
   if (!nodeProcess) {
-    return { success: false, error: '后端服务未运行' };
+    return {
+      success: false,
+      error: '后端服务未运行'
+    };
   }
+
   nodeProcess.send({ type: 'stop-rtsp' });
-  return { success: true };
+
+  return {
+    success: true
+  };
 });
 
 ipcMain.handle('get-rtsp-status', async () => {
   if (!nodeProcess) {
-    return { status: 'disconnected', url: '', error: '', frameCount: 0 };
+    return {
+      status: 'disconnected',
+      url: '',
+      error: '',
+      frameCount: 0
+    };
   }
+
   return new Promise((resolve) => {
     nodeProcess.send({ type: 'get-rtsp-status' });
+
     const onMessage = (msg) => {
       if (msg && msg.type === 'rtsp-status') {
         nodeProcess.removeListener('message', onMessage);
@@ -709,10 +1125,18 @@ ipcMain.handle('get-rtsp-status', async () => {
         resolve(msg.data);
       }
     };
+
     nodeProcess.on('message', onMessage);
+
     const timer = setTimeout(() => {
       nodeProcess.removeListener('message', onMessage);
-      resolve({ status: 'disconnected', url: '', error: '', frameCount: 0 });
+
+      resolve({
+        status: 'disconnected',
+        url: '',
+        error: '',
+        frameCount: 0
+      });
     }, 2000);
   });
 });
@@ -720,10 +1144,15 @@ ipcMain.handle('get-rtsp-status', async () => {
 // 技能管理 IPC
 ipcMain.handle('list-skills', async () => {
   if (!nodeProcess) {
-    return { skills: [], active: null };
+    return {
+      skills: [],
+      active: null
+    };
   }
+
   return new Promise((resolve) => {
     nodeProcess.send({ type: 'list-skills' });
+
     const onMessage = (msg) => {
       if (msg && msg.type === 'skill-list') {
         nodeProcess.removeListener('message', onMessage);
@@ -731,119 +1160,216 @@ ipcMain.handle('list-skills', async () => {
         resolve(msg.data);
       }
     };
+
     nodeProcess.on('message', onMessage);
+
     const timer = setTimeout(() => {
       nodeProcess.removeListener('message', onMessage);
-      resolve({ skills: [], active: null });
+
+      resolve({
+        skills: [],
+        active: null
+      });
     }, 3000);
   });
 });
 
 ipcMain.handle('load-skill', async (_event, skillName) => {
   if (!nodeProcess) {
-    return { success: false, error: '后端服务未运行' };
+    return {
+      success: false,
+      error: '后端服务未运行'
+    };
   }
+
   return new Promise((resolve) => {
-    nodeProcess.send({ type: 'load-skill', skill: skillName });
+    nodeProcess.send({
+      type: 'load-skill',
+      skill: skillName
+    });
+
     const handler = (msg) => {
       if (msg && msg.type === 'skill-loaded') {
         nodeProcess.removeListener('message', handler);
         nodeProcess.removeListener('message', errorHandler);
         clearTimeout(timer);
-        resolve({ success: true, active: msg.data });
+
+        resolve({
+          success: true,
+          active: msg.data
+        });
       }
     };
+
     const errorHandler = (msg) => {
       if (msg && msg.type === 'skill-error') {
         nodeProcess.removeListener('message', handler);
         nodeProcess.removeListener('message', errorHandler);
         clearTimeout(timer);
-        resolve({ success: false, error: msg.error });
+
+        resolve({
+          success: false,
+          error: msg.error
+        });
       }
     };
+
     nodeProcess.on('message', handler);
     nodeProcess.on('message', errorHandler);
+
     const timer = setTimeout(() => {
       nodeProcess.removeListener('message', handler);
       nodeProcess.removeListener('message', errorHandler);
-      resolve({ success: false, error: '技能操作超时' });
+
+      resolve({
+        success: false,
+        error: '技能操作超时'
+      });
     }, 5000);
   });
 });
 
 ipcMain.handle('toggle-skill', async (_event, skillId, enabled) => {
-  if (!nodeProcess) return { success: false, error: '后端服务未运行' };
+  if (!nodeProcess) {
+    return {
+      success: false,
+      error: '后端服务未运行'
+    };
+  }
+
   return new Promise((resolve) => {
-    nodeProcess.send({ type: 'toggle-skill', skill: skillId, enabled });
+    nodeProcess.send({
+      type: 'toggle-skill',
+      skill: skillId,
+      enabled
+    });
+
     const handler = (msg) => {
       if (msg && msg.type === 'skill-toggled') {
         nodeProcess.removeListener('message', handler);
+        nodeProcess.removeListener('message', errorHandler);
         clearTimeout(timer);
-        resolve({ success: true, data: msg.data });
+
+        resolve({
+          success: true,
+          data: msg.data
+        });
       }
     };
+
     const errorHandler = (msg) => {
       if (msg && msg.type === 'skill-error') {
         nodeProcess.removeListener('message', handler);
         nodeProcess.removeListener('message', errorHandler);
         clearTimeout(timer);
-        resolve({ success: false, error: msg.error });
+
+        resolve({
+          success: false,
+          error: msg.error
+        });
       }
     };
+
     nodeProcess.on('message', handler);
     nodeProcess.on('message', errorHandler);
+
     const timer = setTimeout(() => {
       nodeProcess.removeListener('message', handler);
       nodeProcess.removeListener('message', errorHandler);
-      resolve({ success: false, error: '操作超时' });
+
+      resolve({
+        success: false,
+        error: '操作超时'
+      });
     }, 5000);
   });
 });
 
 ipcMain.handle('install-skill', async (_event, fileName, content) => {
-  if (!nodeProcess) return { success: false, error: '后端服务未运行' };
+  if (!nodeProcess) {
+    return {
+      success: false,
+      error: '后端服务未运行'
+    };
+  }
+
   return new Promise((resolve) => {
-    nodeProcess.send({ type: 'install-skill', fileName, content });
+    nodeProcess.send({
+      type: 'install-skill',
+      fileName,
+      content
+    });
+
     const handler = (msg) => {
       if (msg && msg.type === 'skill-installed') {
         nodeProcess.removeListener('message', handler);
+        nodeProcess.removeListener('message', errorHandler);
         clearTimeout(timer);
-        resolve({ success: true, data: msg.data });
+
+        resolve({
+          success: true,
+          data: msg.data
+        });
       }
     };
+
     const errorHandler = (msg) => {
       if (msg && msg.type === 'skill-error') {
         nodeProcess.removeListener('message', handler);
         nodeProcess.removeListener('message', errorHandler);
         clearTimeout(timer);
-        resolve({ success: false, error: msg.error });
+
+        resolve({
+          success: false,
+          error: msg.error
+        });
       }
     };
+
     nodeProcess.on('message', handler);
     nodeProcess.on('message', errorHandler);
+
     const timer = setTimeout(() => {
       nodeProcess.removeListener('message', handler);
       nodeProcess.removeListener('message', errorHandler);
-      resolve({ success: false, error: '操作超时' });
+
+      resolve({
+        success: false,
+        error: '操作超时'
+      });
     }, 5000);
   });
 });
 
 ipcMain.handle('open-skill-file', async () => {
   if (!mainWindow) return null;
+
   const result = await dialog.showOpenDialog(mainWindow, {
     title: '选择技能文件',
     filters: [
-      { name: '技能文件', extensions: ['js', 'py'] },
-      { name: '所有文件', extensions: ['*'] }
+      {
+        name: '技能文件',
+        extensions: ['js', 'py']
+      },
+      {
+        name: '所有文件',
+        extensions: ['*']
+      }
     ],
     properties: ['openFile']
   });
+
   if (result.canceled || result.filePaths.length === 0) return null;
+
   const filePath = result.filePaths[0];
   const fileName = path.basename(filePath);
   const content = fs.readFileSync(filePath, 'utf-8');
-  return { fileName, content, filePath };
+
+  return {
+    fileName,
+    content,
+    filePath
+  };
 });
 
 // ==========================================
@@ -857,6 +1383,7 @@ function loadSettings() {
       return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8'));
     }
   } catch (_) {}
+
   return {};
 }
 
@@ -873,22 +1400,37 @@ function scanPythons() {
   const candidates = process.platform === 'win32'
     ? ['python', 'py', 'python3']
     : ['python3', 'python'];
+
   const found = [];
+
   for (const cmd of candidates) {
     try {
-      const result = require('child_process').spawnSync(cmd, ['--version'], { encoding: 'utf-8', timeout: 3000 });
+      const result = spawnSync(cmd, ['--version'], {
+        encoding: 'utf-8',
+        timeout: 3000
+      });
+
       if (result.status === 0 || result.status === null) {
         const version = (result.stdout || result.stderr || '').trim().replace('Python ', '');
-        found.push({ cmd, version });
+
+        found.push({
+          cmd,
+          version
+        });
       }
     } catch (_) {}
   }
+
   return found;
 }
 
 function checkPythonPackage(pythonCmd, importName) {
   try {
-    const result = require('child_process').spawnSync(pythonCmd, ['-c', `import ${importName}`], { encoding: 'utf-8', timeout: 5000 });
+    const result = spawnSync(pythonCmd, ['-c', `import ${importName}`], {
+      encoding: 'utf-8',
+      timeout: 5000
+    });
+
     return result.status === 0;
   } catch (_) {
     return false;
@@ -897,10 +1439,20 @@ function checkPythonPackage(pythonCmd, importName) {
 
 function getPythonPackagesStatus(pythonCmd) {
   const packages = [
-    { name: 'ultralytics', import: 'ultralytics' },
-    { name: 'Pillow', import: 'PIL' },
-    { name: 'requests', import: 'requests' },
+    {
+      name: 'ultralytics',
+      import: 'ultralytics'
+    },
+    {
+      name: 'Pillow',
+      import: 'PIL'
+    },
+    {
+      name: 'requests',
+      import: 'requests'
+    },
   ];
+
   return packages.map(p => ({
     ...p,
     installed: checkPythonPackage(pythonCmd, p.import),
@@ -910,7 +1462,6 @@ function getPythonPackagesStatus(pythonCmd) {
 async function checkPythonDependencies() {
   const missing = [];
 
-  // 1. 检查模型文件
   const modelCandidates = [
     process.env.CYPHER_YOLO_MODEL,
     process.env.CYPHER_YOLO_PPE_MODEL,
@@ -918,29 +1469,39 @@ async function checkPythonDependencies() {
     path.join(__dirname, 'models', 'yolo-safety.pt'),
     path.join(__dirname, 'skills', 'best.pt')
   ].filter(Boolean);
+
   const hasModel = modelCandidates.some((candidate) => {
-    const modelPath = path.isAbsolute(candidate) ? candidate : path.join(__dirname, candidate);
+    const modelPath = path.isAbsolute(candidate)
+      ? candidate
+      : path.join(__dirname, candidate);
+
     return fs.existsSync(modelPath);
   });
+
   if (!hasModel) {
     missing.push('YOLO 模型文件缺失: 设置 CYPHER_YOLO_MODEL 或提供 models/yolo-safety.pt / skills/best.pt');
   }
 
-  // 2. 扫描所有 Python
   const allPythons = scanPythons();
+
   if (allPythons.length === 0) {
     missing.push('Python 未安装（需要 Python 3.10+）');
-    return { missing, pythonCmd: null, allPythons: [] };
+
+    return {
+      missing,
+      pythonCmd: null,
+      allPythons: []
+    };
   }
 
-  // 3. 找出所有依赖齐全的 Python，优先作为默认
   const settings = loadSettings();
   let pythonCmd = null;
   let usedPreferred = false;
-
   let depReadyCmd = null;
+
   for (const p of allPythons) {
     const pkgs = getPythonPackagesStatus(p.cmd);
+
     if (pkgs.every(pkg => pkg.installed)) {
       depReadyCmd = p.cmd;
       break;
@@ -950,48 +1511,77 @@ async function checkPythonDependencies() {
   if (settings.preferredPython) {
     const pref = settings.preferredPython;
     const found = allPythons.find(p => p.cmd === pref);
+
     if (found) {
       const prefPkgs = getPythonPackagesStatus(found.cmd);
+
       if (prefPkgs.every(pkg => pkg.installed) || !depReadyCmd) {
         pythonCmd = found.cmd;
         usedPreferred = true;
       }
     } else if (fs.existsSync(pref)) {
       try {
-        const result = require('child_process').spawnSync(pref, ['--version'], { encoding: 'utf-8', timeout: 3000 });
+        const result = spawnSync(pref, ['--version'], {
+          encoding: 'utf-8',
+          timeout: 3000
+        });
+
         if (result.status === 0 || result.status === null) {
           const version = (result.stdout || result.stderr || '').trim().replace('Python ', '');
-          allPythons.push({ cmd: pref, version });
+
+          allPythons.push({
+            cmd: pref,
+            version
+          });
+
           const newPkgs = getPythonPackagesStatus(pref);
+
           if (newPkgs.every(pkg => pkg.installed) || !depReadyCmd) {
             pythonCmd = pref;
             usedPreferred = true;
-            if (!depReadyCmd && newPkgs.every(pkg => pkg.installed)) depReadyCmd = pref;
+
+            if (!depReadyCmd && newPkgs.every(pkg => pkg.installed)) {
+              depReadyCmd = pref;
+            }
           }
         }
       } catch (_) {}
     }
   }
 
-  // 4. 默认使用依赖齐全的 Python，否则回退到第一个
   if (!pythonCmd) {
     pythonCmd = depReadyCmd || allPythons[0].cmd;
   }
 
-  // 5. 检查该 Python 的包
   const packages = getPythonPackagesStatus(pythonCmd);
+
   for (const pkg of packages) {
     if (!pkg.installed) {
       missing.push(`Python 包未安装: ${pkg.name}`);
     }
   }
 
-  return { missing, pythonCmd, allPythons, packages, usedPreferred };
+  return {
+    missing,
+    pythonCmd,
+    allPythons,
+    packages,
+    usedPreferred
+  };
 }
 
 async function autoInstallDeps(pythonCmd) {
   return new Promise((resolve) => {
-    const pipArgs = ['-m', 'pip', 'install', 'ultralytics', 'Pillow', 'requests', '--no-warn-script-location'];
+    const pipArgs = [
+      '-m',
+      'pip',
+      'install',
+      'ultralytics',
+      'Pillow',
+      'requests',
+      '--no-warn-script-location'
+    ];
+
     const pipProc = trackChild(spawn(pythonCmd, pipArgs, {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
@@ -999,15 +1589,29 @@ async function autoInstallDeps(pythonCmd) {
 
     let stdout = '';
     let stderr = '';
-    pipProc.stdout.on('data', (d) => { stdout += d.toString(); });
-    pipProc.stderr.on('data', (d) => { stderr += d.toString(); });
+
+    pipProc.stdout.on('data', (d) => {
+      stdout += d.toString();
+    });
+
+    pipProc.stderr.on('data', (d) => {
+      stderr += d.toString();
+    });
 
     pipProc.on('close', (code) => {
-      resolve({ success: code === 0, stdout, stderr });
+      resolve({
+        success: code === 0,
+        stdout,
+        stderr
+      });
     });
 
     pipProc.on('error', (err) => {
-      resolve({ success: false, stdout, stderr: err.message });
+      resolve({
+        success: false,
+        stdout,
+        stderr: err.message
+      });
     });
   });
 }
@@ -1016,67 +1620,74 @@ async function autoInstallDeps(pythonCmd) {
 // 应用生命周期
 // ==========================================
 app.whenReady().then(async () => {
-  // 启动前检测 Python 依赖
   let checkResult = await checkPythonDependencies();
   let missing = checkResult.missing;
 
-  // 诊断测试：AUTO_START=1 时跳过 Python 弹窗
   if (process.env.AUTO_START === '1') {
     missing = [];
   }
 
-  // 如果存在缺失依赖，进入交互式处理流程
   while (missing.length > 0) {
     const allPythons = checkResult.allPythons || [];
     const currentCmd = checkResult.pythonCmd || '无';
-    const currentVersion = allPythons.find(p => p.cmd === currentCmd)?.version || '?';
 
-    // 构建弹窗详情文本
     let detail = '';
 
-    // 显示所有检测到的 Python 及其包状态
     if (allPythons.length > 0) {
       detail += '检测到的 Python 环境：\n';
+
       for (const p of allPythons) {
         const pkgs = getPythonPackagesStatus(p.cmd);
         const marks = pkgs.map(pkg => (pkg.installed ? '✓' : '✗') + ' ' + pkg.name).join('  ');
         const marker = p.cmd === currentCmd ? ' → 当前使用' : '';
+
         detail += `[${p.cmd}] ${p.version}  ${marks}${marker}\n`;
       }
+
       detail += '\n';
     }
 
     detail += '缺失项：\n' + missing.join('\n');
 
-    // 构建按钮
     const buttons = [];
     const buttonActions = [];
 
-    // 如果有其他包齐全的 Python，提供切换选项
     for (const p of allPythons) {
       if (p.cmd === currentCmd) continue;
+
       const pkgs = getPythonPackagesStatus(p.cmd);
       const allInstalled = pkgs.every(pkg => pkg.installed);
+
       if (allInstalled) {
         buttons.push(`切换到 ${p.cmd} (${p.version})`);
-        buttonActions.push({ type: 'switch', cmd: p.cmd });
+        buttonActions.push({
+          type: 'switch',
+          cmd: p.cmd
+        });
       }
     }
 
-    // 如果当前 Python 存在，提供安装选项
     if (checkResult.pythonCmd) {
       buttons.push(`在 ${currentCmd} 安装依赖`);
-      buttonActions.push({ type: 'install' });
+      buttonActions.push({
+        type: 'install'
+      });
     }
 
     buttons.push('手动指定 Python 路径');
-    buttonActions.push({ type: 'browse' });
+    buttonActions.push({
+      type: 'browse'
+    });
 
     buttons.push('仍要启动');
-    buttonActions.push({ type: 'skip' });
+    buttonActions.push({
+      type: 'skip'
+    });
 
     buttons.push('退出');
-    buttonActions.push({ type: 'quit' });
+    buttonActions.push({
+      type: 'quit'
+    });
 
     const { response } = await dialog.showMessageBox({
       type: 'warning',
@@ -1100,10 +1711,14 @@ app.whenReady().then(async () => {
     }
 
     if (action.type === 'switch') {
-      // 用户选择切换到另一个 Python
-      saveSettings({ ...loadSettings(), preferredPython: action.cmd });
+      saveSettings({
+        ...loadSettings(),
+        preferredPython: action.cmd
+      });
+
       checkResult = await checkPythonDependencies();
       missing = checkResult.missing;
+
       if (missing.length === 0) {
         await dialog.showMessageBox({
           type: 'info',
@@ -1111,29 +1726,41 @@ app.whenReady().then(async () => {
           message: `已切换到 ${action.cmd}，所有依赖已就绪。`,
           buttons: ['确定'],
         });
+
         break;
       }
-      // 切换后仍有缺失，继续循环
+
       continue;
     }
 
     if (action.type === 'browse') {
-      // 用户手动选择 Python 路径
       const { filePaths } = await dialog.showOpenDialog({
         title: '选择 Python 可执行文件',
         properties: ['openFile'],
         filters: [
-          { name: 'Python 可执行文件', extensions: ['exe'] },
-          { name: '所有文件', extensions: ['*'] },
+          {
+            name: 'Python 可执行文件',
+            extensions: ['exe']
+          },
+          {
+            name: '所有文件',
+            extensions: ['*']
+          },
         ],
       });
+
       if (!filePaths || filePaths.length === 0) {
-        continue; // 用户取消，回到弹窗
+        continue;
       }
+
       const customPath = filePaths[0];
-      // 验证选择的文件
+
       try {
-        const result = require('child_process').spawnSync(customPath, ['--version'], { encoding: 'utf-8', timeout: 3000 });
+        const result = spawnSync(customPath, ['--version'], {
+          encoding: 'utf-8',
+          timeout: 3000
+        });
+
         if (result.status !== 0 && result.status !== null) {
           await dialog.showMessageBox({
             type: 'error',
@@ -1141,6 +1768,7 @@ app.whenReady().then(async () => {
             message: '选择的文件不是有效的 Python 可执行文件。',
             buttons: ['确定'],
           });
+
           continue;
         }
       } catch (_) {
@@ -1150,12 +1778,18 @@ app.whenReady().then(async () => {
           message: '无法执行选择的文件。',
           buttons: ['确定'],
         });
+
         continue;
       }
-      // 保存自定义路径
-      saveSettings({ ...loadSettings(), preferredPython: customPath });
+
+      saveSettings({
+        ...loadSettings(),
+        preferredPython: customPath
+      });
+
       checkResult = await checkPythonDependencies();
       missing = checkResult.missing;
+
       if (missing.length === 0) {
         await dialog.showMessageBox({
           type: 'info',
@@ -1163,28 +1797,28 @@ app.whenReady().then(async () => {
           message: '自定义 Python 路径已保存，所有依赖已就绪。',
           buttons: ['确定'],
         });
+
         break;
       }
+
       continue;
     }
 
     if (action.type === 'install') {
-      // 在当前 Python 安装依赖
-      const installing = dialog.showMessageBox({
+      dialog.showMessageBox({
         type: 'info',
         title: '正在安装',
         message: `正在通过 pip 安装依赖到 ${checkResult.pythonCmd}...`,
         detail: ' ultralytics\n Pillow\n requests\n\n请稍候，安装完成后将自动检测。',
         buttons: [],
-      });
+      }).catch(() => {});
 
       const result = await autoInstallDeps(checkResult.pythonCmd);
-
-      installing.then(() => {}).catch(() => {});
 
       if (result.success) {
         checkResult = await checkPythonDependencies();
         missing = checkResult.missing;
+
         if (missing.length === 0) {
           await dialog.showMessageBox({
             type: 'info',
@@ -1193,32 +1827,33 @@ app.whenReady().then(async () => {
             detail: '所有 Python 依赖已就绪，点击确定启动应用。',
             buttons: ['确定'],
           });
+
           break;
-        } else {
-          await dialog.showMessageBox({
-            type: 'warning',
-            title: '安装完成',
-            message: '依赖安装结束，但仍有缺失项：',
-            detail: missing.join('\n') + '\n\n请手动执行安装命令排查。',
-            buttons: ['确定'],
-          });
-          continue;
         }
-      } else {
+
         await dialog.showMessageBox({
-          type: 'error',
-          title: '安装失败',
-          message: 'pip 安装失败，请手动安装。',
-          detail: '请打开命令行执行以下命令：\n' +
-            `${checkResult.pythonCmd} -m pip install ultralytics Pillow requests\n\n错误信息：\n${result.stderr.slice(-500)}`,
+          type: 'warning',
+          title: '安装完成',
+          message: '依赖安装结束，但仍有缺失项：',
+          detail: missing.join('\n') + '\n\n请手动执行安装命令排查。',
           buttons: ['确定'],
         });
+
         continue;
       }
+
+      await dialog.showMessageBox({
+        type: 'error',
+        title: '安装失败',
+        message: 'pip 安装失败，请手动安装。',
+        detail: '请打开命令行执行以下命令：\n' +
+          `${checkResult.pythonCmd} -m pip install ultralytics Pillow requests\n\n错误信息：\n${result.stderr.slice(-500)}`,
+        buttons: ['确定'],
+      });
     }
   }
 
-  createWindow();
+  await createWindow();
 });
 
 app.on('window-all-closed', () => {
@@ -1233,8 +1868,23 @@ app.on('window-all-closed', () => {
   });
 });
 
-app.on('activate', () => {
+app.on('before-quit', () => {
+  stopServices().catch(() => {});
+});
+
+app.on('activate', async () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    await createWindow();
   }
+});
+
+process.on('uncaughtException', (err) => {
+  logToFile('MAIN', `uncaughtException: ${err.stack || err.message}`);
+  stopServices().finally(() => {
+    app.quit();
+  });
+});
+
+process.on('unhandledRejection', (err) => {
+  logToFile('MAIN', `unhandledRejection: ${err && err.stack ? err.stack : String(err)}`);
 });

@@ -532,8 +532,20 @@
         </button>
       `).join('');
       list.querySelectorAll('button').forEach(button => {
-        button.addEventListener('click', () => {
-          activeCameraId = button.dataset.camera;
+        button.addEventListener('click', async () => {
+          const nextId = button.dataset.camera;
+          activeCameraId = nextId;
+
+          try {
+            await fetch('/api/cameras/active', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: nextId })
+            });
+          } catch (error) {
+            console.warn('active camera sync failed:', error.message);
+          }
+
           renderCameras();
           refreshFrame();
         });
@@ -625,15 +637,20 @@
           <div class="safety-note">
             <strong>安全说明</strong><br>
             Web 技能安装已禁用。页面不支持上传新技能。新技能必须通过受控本地部署流程加入。安装不等于启用；只有用户在这里明确启用后，技能才会参与 AI 分析。
+          </div>
         `;
         return;
       }
 
-      const rows = skillTab === 'enabled' ? skillItems.filter(skill => skill.enabled === true) : skillItems;
+      const rows = skillTab === 'enabled'
+        ? skillItems.filter(skill => skill.enabled === true)
+        : skillItems;
+
       if (!rows.length) {
         skillModalBody.innerHTML = `<div class="empty">${skillTab === 'enabled' ? '暂无已启用技能' : '暂无技能'}</div>`;
         return;
       }
+
       skillModalBody.innerHTML = rows.map(renderSkillRow).join('');
       skillModalBody.querySelectorAll('[data-skill-toggle]').forEach(button => {
         button.addEventListener('click', () => toggleSkill(button.dataset.skillToggle, button.dataset.enabled === 'true'));
@@ -674,7 +691,7 @@
     pollAnalysis();
     refreshFrame();
     setInterval(loadCameras, 10000);
-    setInterval(refreshFrame, 1000);
+    setInterval(refreshFrame, 2000);
     setInterval(pollAnalysis, 3000);
   </script>
 </body>

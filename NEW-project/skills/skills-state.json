@@ -1,4 +1,4 @@
 {
-  "qwen-vl": true,
-  "yolo-safety": true
+  "qwen-vl": false,
+  "yolo-safety": false
 }
