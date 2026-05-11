@@ -196,6 +196,10 @@ function createCamera(id, type, value, options = {}) {
     error: '',
     frameCount: 0,
     latestJpeg: null,
+    latestDetections: [],
+    latestDetectionAt: 0,
+    latestAnnotatedJpeg: null,
+    latestAnnotatedKey: '',
     latestAudio: null,
     audioStatus: 'idle',
     audioError: '',
@@ -225,6 +229,229 @@ function getLatestFrameJpeg() {
   const cam = getActiveCamera();
   return cam ? cam.latestJpeg : null;
 }
+
+function escapeSvgText(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
+}
+
+function clampNumber(value, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, n));
+}
+
+function normalizeDetectionBox(det, width, height) {
+  if (!det || !width || !height) return null;
+
+  const source = det.box || det.bbox || det.xyxy || det.rect;
+  if (!source) return null;
+
+  let x1;
+  let y1;
+  let x2;
+  let y2;
+
+  if (Array.isArray(source)) {
+    if (source.length < 4) return null;
+    x1 = Number(source[0]);
+    y1 = Number(source[1]);
+
+    const third = Number(source[2]);
+    const fourth = Number(source[3]);
+    const format = String(det.boxFormat || det.bboxFormat || '').toLowerCase();
+
+    if (format.includes('xywh')) {
+      x2 = x1 + third;
+      y2 = y1 + fourth;
+    } else {
+      x2 = third;
+      y2 = fourth;
+    }
+  } else {
+    x1 = Number(source.x1 ?? source.left ?? source.x ?? 0);
+    y1 = Number(source.y1 ?? source.top ?? source.y ?? 0);
+
+    if (source.x2 !== undefined || source.right !== undefined) {
+      x2 = Number(source.x2 ?? source.right);
+    } else {
+      x2 = x1 + Number(source.w ?? source.width ?? 0);
+    }
+
+    if (source.y2 !== undefined || source.bottom !== undefined) {
+      y2 = Number(source.y2 ?? source.bottom);
+    } else {
+      y2 = y1 + Number(source.h ?? source.height ?? 0);
+    }
+  }
+
+  if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+
+  // 兼容 0~1 归一化坐标
+  if (x1 >= 0 && y1 >= 0 && x2 <= 1 && y2 <= 1) {
+    x1 *= width;
+    x2 *= width;
+    y1 *= height;
+    y2 *= height;
+  }
+
+  const left = clampNumber(Math.min(x1, x2), 0, width - 1);
+  const top = clampNumber(Math.min(y1, y2), 0, height - 1);
+  const right = clampNumber(Math.max(x1, x2), 0, width);
+  const bottom = clampNumber(Math.max(y1, y2), 0, height);
+
+  const w = Math.max(1, right - left);
+  const h = Math.max(1, bottom - top);
+
+  return {
+    x: Math.round(left),
+    y: Math.round(top),
+    w: Math.round(w),
+    h: Math.round(h)
+  };
+}
+
+async function drawDetectionsOnJpeg(jpegBuffer, detections = []) {
+  if (!jpegBuffer || !Array.isArray(detections) || detections.length === 0) {
+    return jpegBuffer;
+  }
+
+  const metadata = await sharp(jpegBuffer).metadata();
+  const width = metadata.width || 1280;
+  const height = metadata.height || 720;
+
+  const items = detections
+    .map(det => ({ det, box: normalizeDetectionBox(det, width, height) }))
+    .filter(item => item.box);
+
+  if (!items.length) return jpegBuffer;
+
+  const svgParts = items.map(({ det, box }) => {
+    const rawLabel = det.name || det.label || det.className || det.class || det.type || 'object';
+    const label = escapeSvgText(rawLabel);
+    const confidence = Number(det.confidence ?? det.conf ?? det.score);
+    const confText = Number.isFinite(confidence) ? ` ${(confidence * 100).toFixed(0)}%` : '';
+    const text = `${label}${confText}`;
+
+    const textW = Math.min(width - box.x, Math.max(90, text.length * 10 + 14));
+    const textY = Math.max(0, box.y - 26);
+
+    return `
+      <rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"
+            fill="none" stroke="#ef4444" stroke-width="3"/>
+      <rect x="${box.x}" y="${textY}" width="${textW}" height="24"
+            fill="#ef4444" fill-opacity="0.88"/>
+      <text x="${box.x + 6}" y="${textY + 17}"
+            font-size="15" font-family="Arial, Microsoft YaHei, sans-serif"
+            fill="#ffffff">${escapeSvgText(text)}</text>
+    `;
+  }).join('');
+
+  const svg = `
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      ${svgParts}
+    </svg>
+  `;
+
+  return sharp(jpegBuffer)
+    .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
+    .jpeg({ quality: 85 })
+    .toBuffer();
+}
+
+function getCameraForStream(cameraId) {
+  if (!cameraId || cameraId === 'active') return getActiveCamera();
+  return getCamera(cameraId);
+}
+
+async function getDisplayJpeg(camera, withBoxes = true) {
+  if (!camera || !camera.latestJpeg) return null;
+
+  const detections = Array.isArray(camera.latestDetections) ? camera.latestDetections : [];
+  const detectionFresh = Date.now() - Number(camera.latestDetectionAt || 0) <= 12000;
+
+  if (!withBoxes || !detectionFresh || detections.length === 0) {
+    return camera.latestJpeg;
+  }
+
+  const cacheKey = `${camera.frameCount || 0}:${camera.latestDetectionAt || 0}`;
+  if (camera.latestAnnotatedJpeg && camera.latestAnnotatedKey === cacheKey) {
+    return camera.latestAnnotatedJpeg;
+  }
+
+  const annotated = await drawDetectionsOnJpeg(camera.latestJpeg, detections);
+  camera.latestAnnotatedJpeg = annotated;
+  camera.latestAnnotatedKey = cacheKey;
+  return annotated;
+}
+
+function sendMjpegStream(req, res, cameraId = 'active') {
+  const requestedCamera = getCameraForStream(cameraId);
+  if (cameraId !== 'active' && !requestedCamera) {
+    res.status(404).send('Camera not found');
+    return;
+  }
+
+  const fpsRaw = Number(req.query.fps || 15);
+  const fps = Number.isFinite(fpsRaw) ? Math.max(1, Math.min(30, Math.floor(fpsRaw))) : 15;
+  const intervalMs = Math.floor(1000 / fps);
+  const withBoxes = req.query.boxes !== '0';
+
+  res.writeHead(200, {
+    'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+    'Pragma': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+
+  let closed = false;
+  let sending = false;
+
+  req.on('close', () => {
+    closed = true;
+  });
+
+  const timer = setInterval(async () => {
+    if (closed) {
+      clearInterval(timer);
+      return;
+    }
+
+    if (sending) return;
+    sending = true;
+
+    try {
+      const camera = getCameraForStream(cameraId);
+      const jpeg = await getDisplayJpeg(camera, withBoxes);
+
+      if (!jpeg) {
+        sending = false;
+        return;
+      }
+
+      res.write('--frame\r\n');
+      res.write('Content-Type: image/jpeg\r\n');
+      res.write(`Content-Length: ${jpeg.length}\r\n\r\n`);
+      res.write(jpeg);
+      res.write('\r\n');
+    } catch (err) {
+      console.warn('[mjpeg] 输出帧失败:', err.message);
+    } finally {
+      sending = false;
+    }
+  }, intervalMs);
+}
+
 
 function getLatestAudioMetrics(cameraId = activeCameraId) {
   const cam = getCamera(cameraId);
@@ -1080,8 +1307,10 @@ async function runAnalysisTick() {
     if (isAnalyzing) return;
 
     const config = getDetectionConfig();
-    const frameJpeg = getLatestFrameJpeg();
-    const audioMetrics = getLatestAudioMetrics(activeCameraId);
+    const analysisCameraId = activeCameraId;
+    const analysisCamera = getCamera(analysisCameraId);
+    const frameJpeg = analysisCamera ? analysisCamera.latestJpeg : null;
+    const audioMetrics = getLatestAudioMetrics(analysisCameraId);
     const hasFreshAudio = Boolean(audioMetrics && audioMetrics.fresh);
     const enabledSkills = getEnabledAnalysisSkills();
 
@@ -1116,12 +1345,12 @@ async function runAnalysisTick() {
     broadcastSSE(aiResult);
 
     try {
-      const activeCam = getActiveCamera();
+      const activeCam = analysisCamera;
       const skillConfigContext = buildSkillConfigContext(config);
       let framePath = '';
       if (frameCopy.length > 0) {
         try {
-          framePath = writeRuntimeFrame(activeCameraId, frameCopy);
+          framePath = writeRuntimeFrame(analysisCameraId, frameCopy);
         } catch (err) {
           console.warn('[analysis] 写入 runtime frame 失败，回退 base64:', err.message);
         }
@@ -1132,8 +1361,8 @@ async function runAnalysisTick() {
 
       const analysisContext = {
         type: 'analyze',
-        cameraId: activeCameraId,
-        cameraLabel: activeCam ? (activeCam.label || maskCameraUrl(activeCam.url) || activeCameraId) : activeCameraId,
+        cameraId: analysisCameraId,
+        cameraLabel: activeCam ? (activeCam.label || maskCameraUrl(activeCam.url) || analysisCameraId) : analysisCameraId,
         timestamp: Date.now(),
         framePath,
         audio: audioMetrics,
@@ -1147,6 +1376,14 @@ async function runAnalysisTick() {
           setTimeout(() => reject(new Error(`Analysis timed out after ${ANALYZE_TIMEOUT_MS}ms`)), ANALYZE_TIMEOUT_MS)
         )
       ]);
+
+      const analyzedCamera = getCamera(analysisCameraId);
+      if (analyzedCamera) {
+        analyzedCamera.latestDetections = Array.isArray(result.detections) ? result.detections : [];
+        analyzedCamera.latestDetectionAt = Date.now();
+        analyzedCamera.latestAnnotatedJpeg = null;
+        analyzedCamera.latestAnnotatedKey = '';
+      }
 
       const now = new Date();
       const timeStr = now.toLocaleTimeString('zh-CN', { hour12: false });
@@ -1175,7 +1412,7 @@ async function runAnalysisTick() {
       };
 
       writeLog(timestamp, result.text, result.alert, result.alert_details || []);
-      writeCameraJsonLog(activeCameraId, result);
+      writeCameraJsonLog(analysisCameraId, result);
       broadcastSSE(aiResult);
 
       console.log(`[分析成功] ${timeStr}, 启用技能 ${enabledSkills.length} 个, ${useFramePathOnly ? 'framePath' : 'base64'}, 耗时 ${Date.now() - startTime}ms`);
@@ -1202,7 +1439,7 @@ async function runAnalysisTick() {
       };
 
       writeLog(timestamp, errMsg);
-      writeCameraJsonLog(activeCameraId, { text: errMsg, alert: false, alert_details: [], risk_level: 'none', _skillResults: [] });
+      writeCameraJsonLog(analysisCameraId, { text: errMsg, alert: false, alert_details: [], risk_level: 'none', _skillResults: [] });
       broadcastSSE(aiResult);
       console.error('[分析异常]', e.message);
     } finally {
@@ -1416,6 +1653,16 @@ app.get('/api/cameras/:id/frame', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.set('X-Camera-Id', cam.id);
   res.send(cam.latestJpeg);
+});
+
+// MJPEG stream for active camera.
+app.get('/api/stream', (req, res) => {
+  sendMjpegStream(req, res, 'active');
+});
+
+// MJPEG stream for a specific camera.
+app.get('/api/cameras/:id/stream', (req, res) => {
+  sendMjpegStream(req, res, req.params.id);
 });
 
 // 获取当前 active 摄像头的音频状态

@@ -263,7 +263,7 @@
       <div class="panel-head">
         <div>
           <strong>实时画面</strong>
-          <div class="meta">使用 CYPHER 当前帧接口刷新，不启用 MJPEG 链路。</div>
+          <div class="meta">使用 CYPHER MJPEG 视频流刷新，支持 YOLO 框检测叠加</div>
         </div>
         <div class="status"><span id="sse-dot" class="dot"></span><span id="sse-status">SSE 未连接</span></div>
       </div>
@@ -506,38 +506,39 @@
       }
     }
 
-    function frameEndpoint() {
-      if (!activeCameraId || activeCameraId === 'webrtc' || activeCameraId === 'active') return '/api/frame';
-      return `/api/cameras/${encodeURIComponent(activeCameraId)}/frame`;
+    function streamEndpoint() {
+      if (!activeCameraId || activeCameraId === 'webrtc' || activeCameraId === 'active') {
+        return '/api/stream?fps=15&boxes=1';
+      }
+      return `/api/cameras/${encodeURIComponent(activeCameraId)}/stream?fps=15&boxes=1`;
     }
 
-    function refreshFrame() {
-      const now = Date.now();
-      if (frameLoading) return;
-      if (now - lastFrameRequestAt < FRAME_REFRESH_MS) return;
-
-      frameLoading = true;
-      lastFrameRequestAt = now;
-
+    function refreshStream(force = false) {
       const image = document.getElementById('video-frame');
       const placeholder = document.getElementById('video-placeholder');
+      const base = streamEndpoint();
+      const src = `${base}&t=${Date.now()}`;
+
+      if (!force && image.dataset.streamSrc === base) return;
+      image.dataset.streamSrc = base;
 
       image.onload = () => {
-        frameLoading = false;
         image.style.display = 'block';
         placeholder.style.display = 'none';
       };
 
       image.onerror = () => {
-        frameLoading = false;
         image.style.display = 'none';
         placeholder.style.display = 'block';
         const label = activeCameraId || 'active';
-        placeholder.textContent = `等待摄像头帧：${label}。请打开推流页，或在设置页启动 RTSP/IP 摄像头。`;
+        placeholder.textContent = `等待视频流：${label}。请打开推流页，或在设置页启动 RTSP/IP 摄像头。`;
       };
 
-      image.src = `${frameEndpoint()}?t=${now}`;
+      placeholder.style.display = 'block';
+      placeholder.textContent = `正在连接视频流：${activeCameraId || 'active'}...`;
+      image.src = src;
     }
+
     function renderCameras() {
       const list = document.getElementById('camera-list');
       if (!cameras.length) {
@@ -567,13 +568,14 @@
           }
 
           renderCameras();
-          refreshFrame();
+          refreshStream(true);
         });
       });
       const active = cameras.find(camera => camera.id === activeCameraId);
       document.getElementById('active-camera-label').textContent = active ? (active.label || active.id) : activeCameraId;
     }
     async function loadCameras() {
+      const previousActiveId = activeCameraId;
       try {
         const response = await fetch('/api/cameras', { cache: 'no-store' });
         const data = await response.json();
@@ -587,6 +589,9 @@
           activeCameraId = frameCamera.id;
         }
         renderCameras();
+        if (previousActiveId !== activeCameraId) {
+          refreshStream(true);
+        }
       } catch (error) {
         cameras = [];
         activeCameraId = activeCameraId || 'active';
@@ -702,12 +707,10 @@
       if (event.target === skillModal) closeSkillModal();
     });
 
-    loadCameras();
     connectSse();
-    pollAnalysis();
-    refreshFrame();
-    setInterval(loadCameras, 10000);
-    setInterval(refreshFrame, 1000);
+    loadCameras().then(() => refreshStream(true));
+    pollAnalysis(true);
+    setInterval(loadCameras, 3000);
     setInterval(pollAnalysis, 3000);
   </script>
 </body>
