@@ -1,5 +1,5 @@
 {
   "qwen-vl": false,
   "yolo-safety": false,
-  "audio-detector": false
+  "audio-detector": true
 }
