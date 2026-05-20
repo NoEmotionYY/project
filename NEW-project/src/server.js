@@ -125,12 +125,147 @@ let aiSkill; // 向后兼容，保留引用
 try {
   const status = skillManager.getSkillsStatus();
   const enabledCount = status.filter(p => p.enabled).length;
+  const failedSkills = skillManager.getFailedSkills();
+  
   console.log(`[技能] 当前启用 ${enabledCount} / ${status.length} 个技能`);
+  
+  if (failedSkills.length > 0) {
+    console.error('[技能] ⚠️ 以下技能加载失败:');
+    failedSkills.forEach(skill => {
+      console.error(`  - ${skill.label} (${skill.id}): ${skill.reason}`);
+    });
+  }
+  
+  // 验证启用的技能是否正常加载
+  const enabledSkills = status.filter(p => p.enabled);
+  const loadedEnabledSkills = enabledSkills.filter(p => p.loaded);
+  
+  if (enabledSkills.length > 0 && loadedEnabledSkills.length === 0) {
+    console.error('[技能] ⚠️ 警告: 所有启用的技能都未能成功加载！');
+    console.error('[技能] 请检查:');
+    console.error('  1. Python 依赖是否正确安装 (pip install -r requirements.txt)');
+    console.error('  2. YOLO 模型文件是否存在于 skills/ 目录');
+    console.error('  3. 查看上面的错误日志了解详细原因');
+  } else if (loadedEnabledSkills.length < enabledSkills.length) {
+    const notLoaded = enabledSkills.filter(p => !p.loaded);
+    console.warn(`[技能] ⚠️ ${notLoaded.length} 个技能未能加载:`);
+    notLoaded.forEach(skill => {
+      console.warn(`  - ${skill.label} (${skill.id})`);
+    });
+  }
+  
   aiSkill = skillManager;
 } catch (e) {
   console.error('[技能] 初始化失败:', e.message);
+  console.error('[技能] 堆栈跟踪:', e.stack);
   aiSkill = null;
 }
+
+// ==========================================
+// 企业微信推送集成
+// ==========================================
+let wechatPushProcess = null;
+let wechatPushReady = false;
+
+function startWechatPush() {
+  try {
+    const wechatPushPath = path.join(PROJECT_ROOT, 'skills', 'wechat-push.py');
+    if (!fs.existsSync(wechatPushPath)) {
+      console.log('[WeChat Push] wechat-push.py 不存在，跳过启动');
+      return;
+    }
+
+    wechatPushProcess = spawn(PYTHON_BIN, [wechatPushPath], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        PYTHONUNBUFFERED: '1'
+      }
+    });
+
+    let readBuffer = '';
+    wechatPushProcess.stdout.on('data', (data) => {
+      readBuffer += data.toString();
+      const lines = readBuffer.split('\n');
+      readBuffer = lines.pop();
+      
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const response = JSON.parse(line);
+          if (response.status === 'ready') {
+            wechatPushReady = true;
+            console.log('[WeChat Push] 已就绪');
+            // 发送开机通知
+            sendWechatStartupNotification();
+          } else if (response.result) {
+            console.log('[WeChat Push]', response.result.text || '');
+          }
+        } catch (e) {
+          console.error('[WeChat Push] 解析响应失败:', e.message);
+        }
+      }
+    });
+
+    wechatPushProcess.stderr.on('data', (data) => {
+      console.error('[WeChat Push Error]', data.toString().trim());
+    });
+
+    wechatPushProcess.on('error', (err) => {
+      console.error('[WeChat Push] 启动失败:', err.message);
+    });
+
+    wechatPushProcess.on('close', (code) => {
+      console.log(`[WeChat Push] 退出 (code ${code})`);
+      wechatPushReady = false;
+      wechatPushProcess = null;
+    });
+
+    console.log('[WeChat Push] 正在启动...');
+  } catch (e) {
+    console.error('[WeChat Push] 启动异常:', e.message);
+  }
+}
+
+function sendWechatMessage(payload) {
+  if (!wechatPushProcess || !wechatPushReady) {
+    console.warn('[WeChat Push] 未就绪，跳过推送');
+    return;
+  }
+
+  try {
+    // 确保使用 UTF-8 编码发送中文消息，避免乱码
+    const message = JSON.stringify(payload, null, null);
+    wechatPushProcess.stdin.write(message + '\n', 'utf-8');
+  } catch (e) {
+    console.error('[WeChat Push] 发送消息失败:', e.message);
+  }
+}
+
+function sendWechatStartupNotification() {
+  sendWechatMessage({ action: 'startup' });
+}
+
+function sendWechatAlert(alertData) {
+  // 统一使用精确时间格式：YYYY-MM-DD HH:MM:SS
+  const now = new Date();
+  const preciseTime = now.getFullYear() + '-' + 
+    String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+    String(now.getDate()).padStart(2, '0') + ' ' + 
+    String(now.getHours()).padStart(2, '0') + ':' + 
+    String(now.getMinutes()).padStart(2, '0') + ':' + 
+    String(now.getSeconds()).padStart(2, '0');
+  
+  const payload = {
+    action: 'send_alert',
+    title: alertData.title || '系统安全告警',
+    description: alertData.description || alertData.text || '检测到异常',
+    camera: alertData.camera || alertData.cameraId || '未知监控点',
+    time: preciseTime  // 始终使用当前精确时间，忽略传入的 time 参数
+  };
+  sendWechatMessage(payload);
+}
+// ==========================================
 // ==========================================
 // 全局状态// ==========================================
 let isAnalyzing = false;
@@ -138,6 +273,7 @@ let activeCameraId = 'webrtc';  // current active camera
 let cameraIdCounter = 0;
 
 let aiResult = {
+  cameraId: activeCameraId,
   text: '等待分析...',
   time: '',
   analyzing: false,
@@ -165,9 +301,23 @@ const peerConnections = new Set();
 // cameras: Map<id, { id, type:'rtsp'|'webrtc', url, status, error, frameCount, latestJpeg, rtspProcess }>
 const cameras = new Map();
 
-const RTSP_WIDTH = 1280;
-const RTSP_HEIGHT = 720;
-const RTSP_FPS = 10;
+function envInt(name, fallback, min, max) {
+  const parsed = Number(process.env[name]);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+const RTSP_WIDTH = envInt('RTSP_WIDTH', 1280, 320, 3840);
+const RTSP_HEIGHT = envInt('RTSP_HEIGHT', 720, 180, 2160);
+const RTSP_FPS = envInt('RTSP_FPS', 25, 1, 60);
+const RTSP_JPEG_QUALITY = envInt('RTSP_JPEG_QUALITY', 80, 40, 95);
+const RTSP_MAX_BUFFER_FRAMES = envInt('RTSP_MAX_BUFFER_FRAMES', 3, 1, 30);
+const RTSP_MJPEG_MAX_BUFFER_BYTES = envInt('RTSP_MJPEG_MAX_BUFFER_MB', 8, 1, 128) * 1024 * 1024;
+const MJPEG_DEFAULT_FPS = envInt('MJPEG_DEFAULT_FPS', 25, 1, 60);
+
+function ffmpegMjpegQscaleFromQuality(quality) {
+  return Math.max(2, Math.min(12, Math.round(2 + ((95 - quality) / 55) * 10)));
+}
 
 function sanitizeCameraLabel(input, fallback) {
   return safeText(input, fallback).replace(/[<>]/g, '').slice(0, 80) || fallback;
@@ -397,8 +547,8 @@ function sendMjpegStream(req, res, cameraId = 'active') {
     return;
   }
 
-  const fpsRaw = Number(req.query.fps || 15);
-  const fps = Number.isFinite(fpsRaw) ? Math.max(1, Math.min(30, Math.floor(fpsRaw))) : 15;
+  const fpsRaw = Number(req.query.fps || MJPEG_DEFAULT_FPS);
+  const fps = Number.isFinite(fpsRaw) ? Math.max(1, Math.min(60, Math.floor(fpsRaw))) : MJPEG_DEFAULT_FPS;
   const intervalMs = Math.floor(1000 / fps);
   const withBoxes = req.query.boxes !== '0';
 
@@ -416,12 +566,15 @@ function sendMjpegStream(req, res, cameraId = 'active') {
 
   let closed = false;
   let sending = false;
+  let lastSentKey = '';
+  let timer = null;
 
   req.on('close', () => {
     closed = true;
+    if (timer) clearInterval(timer);
   });
 
-  const timer = setInterval(async () => {
+  timer = setInterval(async () => {
     if (closed) {
       clearInterval(timer);
       return;
@@ -432,6 +585,12 @@ function sendMjpegStream(req, res, cameraId = 'active') {
 
     try {
       const camera = getCameraForStream(cameraId);
+      const frameKey = camera ? `${camera.id}:${camera.frameCount || 0}:${withBoxes ? camera.latestDetectionAt || 0 : 0}` : '';
+      if (!frameKey || frameKey === lastSentKey) {
+        sending = false;
+        return;
+      }
+
       const jpeg = await getDisplayJpeg(camera, withBoxes);
 
       if (!jpeg) {
@@ -439,11 +598,21 @@ function sendMjpegStream(req, res, cameraId = 'active') {
         return;
       }
 
-      res.write('--frame\r\n');
-      res.write('Content-Type: image/jpeg\r\n');
-      res.write(`Content-Length: ${jpeg.length}\r\n\r\n`);
-      res.write(jpeg);
-      res.write('\r\n');
+      if (res.writableLength > 2 * 1024 * 1024) {
+        sending = false;
+        return;
+      }
+
+      const header = Buffer.from(`--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${jpeg.length}\r\n\r\n`);
+      const footer = Buffer.from('\r\n');
+      const ok = res.write(Buffer.concat([header, jpeg, footer]));
+      lastSentKey = frameKey;
+      if (!ok) {
+        await new Promise(resolve => {
+          res.once('drain', resolve);
+          res.once('close', resolve);
+        });
+      }
     } catch (err) {
       console.warn('[mjpeg] 输出帧失败:', err.message);
     } finally {
@@ -468,6 +637,92 @@ function getLatestAudioMetrics(cameraId = activeCameraId) {
 function dbfsFromRatio(value) {
   if (!Number.isFinite(value) || value <= 0) return -120;
   return Math.max(-120, Math.min(0, 20 * Math.log10(value)));
+}
+
+const audioAlertStates = new Map();
+let cachedAudioConfig = null;
+let cachedAudioConfigAt = 0;
+
+function getRuntimeAudioConfig() {
+  const now = Date.now();
+  if (!cachedAudioConfig || now - cachedAudioConfigAt > 500) {
+    cachedAudioConfig = getDetectionConfig().audio || {};
+    cachedAudioConfigAt = now;
+  }
+  return cachedAudioConfig;
+}
+
+function getAudioAlertState(cameraId) {
+  const key = String(cameraId || 'active');
+  if (!audioAlertStates.has(key)) {
+    audioAlertStates.set(key, {
+      loudCount: 0,
+      lastAlertAt: 0
+    });
+  }
+  return audioAlertStates.get(key);
+}
+
+function getAudioAlertLevel(audioMetrics) {
+  const candidates = [
+    audioMetrics && audioMetrics.windowPeakDbfs,
+    audioMetrics && audioMetrics.peakDbfs,
+    audioMetrics && audioMetrics.dbfs
+  ];
+  for (const value of candidates) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return -120;
+}
+
+function maybeBroadcastAudioAlert(camId, cam, audioMetrics) {
+  const config = getRuntimeAudioConfig();
+  if (config.enabled === false) return;
+
+  const threshold = Number.isFinite(Number(config.loudDbfs)) ? Number(config.loudDbfs) : -18;
+  const confirmFrames = Math.max(1, Math.min(20, Math.floor(Number(config.confirmFrames) || 3)));
+  const cooldownMs = Math.max(0, Number(config.cooldownSeconds) || 8) * 1000;
+  const levelDbfs = getAudioAlertLevel(audioMetrics);
+  const state = getAudioAlertState(camId);
+
+  if (levelDbfs < threshold) {
+    state.loudCount = 0;
+    return;
+  }
+
+  state.loudCount += 1;
+  const now = Date.now();
+  if (state.loudCount < confirmFrames || now - state.lastAlertAt < cooldownMs) return;
+
+  state.lastAlertAt = now;
+  state.loudCount = 0;
+
+  const timestamp = new Date(now).toISOString();
+  const alertEvent = {
+    type: 'loud-audio',
+    title: '异常响声警告',
+    timestamp,
+    db_level: levelDbfs,
+    category: 'audio',
+    severity: 'warning',
+    description: `检测到异常响声：${levelDbfs.toFixed(1)} dBFS，阈值 ${threshold} dBFS`,
+    cameraId: camId,
+    cameraLabel: cam ? (cam.label || cam.id || camId) : camId,
+    device_name: config.inputDeviceLabel || ''
+  };
+
+  if (typeof global.broadcastAudioEvent === 'function') {
+    global.broadcastAudioEvent(alertEvent);
+  } else {
+    broadcastSSE({
+      text: alertEvent.description,
+      alert: true,
+      risk_level: 'medium',
+      alerts: [alertEvent],
+      detections: []
+    });
+  }
 }
 
 function normalizeAudioSamples(samples) {
@@ -539,6 +794,7 @@ function updateAudioMetrics(camId, audioData) {
     windowPeakDbfs: Number(cam.audioWindow.peakDbfs.toFixed(2)),
     level: Number(Math.max(0, Math.min(1, (dbfs + 60) / 60)).toFixed(4))
   };
+  maybeBroadcastAudioAlert(camId, cam, cam.latestAudio);
   return true;
 }
 
@@ -665,15 +921,25 @@ function startRtspCamera(id, url) {
   console.log(`[RTSP:${id}] 正在连接: ${maskCameraUrl(url)}`);
   notifyRtspStatus();
 
+  const rtspTransport = String(process.env.RTSP_TRANSPORT || 'tcp').toLowerCase() === 'udp' ? 'udp' : 'tcp';
+  const mjpegQscale = ffmpegMjpegQscaleFromQuality(RTSP_JPEG_QUALITY);
   const args = [
-    '-rtsp_transport', 'tcp',
+    '-hide_banner',
+    '-loglevel', 'error',
+    '-rtsp_transport', rtspTransport,
+    '-fflags', 'nobuffer',
+    '-flags', 'low_delay',
+    '-max_delay', '100000',
+    '-analyzeduration', '0',
+    '-probesize', '32768',
+    '-reorder_queue_size', '0',
     '-i', url,
-    '-f', 'rawvideo',
-    '-pix_fmt', 'rgba',
-    '-s', `${RTSP_WIDTH}x${RTSP_HEIGHT}`,
-    '-r', String(RTSP_FPS),
+    '-map', '0:v:0',
+    '-vf', `scale=${RTSP_WIDTH}:${RTSP_HEIGHT}:flags=fast_bilinear,fps=${RTSP_FPS}`,
+    '-c:v', 'mjpeg',
+    '-q:v', String(mjpegQscale),
+    '-f', 'image2pipe',
     '-an',
-    '-v', 'error',
     'pipe:1'
   ];
 
@@ -685,13 +951,91 @@ function startRtspCamera(id, url) {
   const frameSize = RTSP_WIDTH * RTSP_HEIGHT * 4;
   let buffer = Buffer.alloc(0);
   let stderrBuffer = '';
+  let converting = false;
+  let nextFrameData = null;
+  let droppedFrames = 0;
+  let convertedFrames = 0;
+  let lastStatsAt = Date.now();
+
+  function logRtspStats() {
+    const now = Date.now();
+    if (now - lastStatsAt < 5000) return;
+    const fps = Math.round((convertedFrames * 1000) / Math.max(1, now - lastStatsAt));
+    if (fps > 0 || droppedFrames > 0) {
+      console.log(`[RTSP:${id}] preview fps=${fps}, dropped=${droppedFrames}`);
+    }
+    convertedFrames = 0;
+    droppedFrames = 0;
+    lastStatsAt = now;
+  }
+
+  function processLatestRtspFrame() {
+    const frameData = nextFrameData;
+    nextFrameData = null;
+
+    if (!frameData) {
+      converting = false;
+      return;
+    }
+
+    cam.frameCount++;
+    if (cam.status !== 'connected') {
+      cam.status = 'connected';
+      console.log(`[RTSP:${id}] connected, receiving frames ${RTSP_WIDTH}x${RTSP_HEIGHT}@${RTSP_FPS}fps`);
+      notifyRtspStatus();
+    }
+
+    sharp(frameData, { raw: { width: RTSP_WIDTH, height: RTSP_HEIGHT, channels: 4 } })
+      .jpeg({ quality: RTSP_JPEG_QUALITY })
+      .toBuffer()
+      .then((jpeg) => {
+        cam.latestJpeg = jpeg;
+        writeVideoFrame(id, jpeg);
+        convertedFrames++;
+        if (cam.frameCount === 1) {
+          console.log(`[RTSP:${id}] first frame: ${RTSP_WIDTH}x${RTSP_HEIGHT}, JPEG ${jpeg.length} bytes`);
+        }
+        logRtspStats();
+      })
+      .catch((err) => {
+        if (cam.frameCount <= 3) {
+          console.error(`[RTSP:${id}] frame conversion error`, err.message);
+        }
+      })
+      .finally(() => {
+        if (nextFrameData) {
+          setImmediate(processLatestRtspFrame);
+        } else {
+          converting = false;
+        }
+      });
+  }
+
+  function enqueueRtspFrame(frameData) {
+    nextFrameData = Buffer.from(frameData);
+    if (converting) {
+      droppedFrames++;
+      return;
+    }
+    converting = true;
+    setImmediate(processLatestRtspFrame);
+  }
 
   cam.rtspProcess.stdout.on('data', (chunk) => {
     buffer = Buffer.concat([buffer, chunk]);
+    const completeFrames = Math.floor(buffer.length / frameSize);
+    if (completeFrames > RTSP_MAX_BUFFER_FRAMES) {
+      const framesToDrop = completeFrames - RTSP_MAX_BUFFER_FRAMES;
+      buffer = buffer.slice(framesToDrop * frameSize);
+      droppedFrames += framesToDrop;
+    }
+
     while (buffer.length >= frameSize) {
       const frameData = buffer.slice(0, frameSize);
       buffer = buffer.slice(frameSize);
       if (buffer.length >= frameSize) { continue; }
+      enqueueRtspFrame(frameData);
+      continue;
 
       cam.frameCount++;
       if (cam.status !== 'connected') {
@@ -759,6 +1103,161 @@ function startRtspCamera(id, url) {
 // ==========================================
 // 工具函数
 // ==========================================
+startRtspCamera = function startRtspCameraOptimized(id, url) {
+  const cam = getCamera(id);
+  if (!cam) return;
+
+  if (cam.rtspProcess) {
+    stopRtspCamera(id);
+  }
+
+  cam.url = url;
+  cam.status = 'connecting';
+  cam.error = '';
+  cam.frameCount = 0;
+  cam.latestJpeg = null;
+
+  const rtspTransport = String(process.env.RTSP_TRANSPORT || 'tcp').toLowerCase() === 'udp' ? 'udp' : 'tcp';
+  const mjpegQscale = ffmpegMjpegQscaleFromQuality(RTSP_JPEG_QUALITY);
+  console.log(`[RTSP:${id}] 正在连接(MJPEG直出): ${maskCameraUrl(url)} transport=${rtspTransport} ${RTSP_WIDTH}x${RTSP_HEIGHT}@${RTSP_FPS}`);
+  notifyRtspStatus();
+
+  const args = [
+    '-hide_banner',
+    '-loglevel', 'error',
+    '-rtsp_transport', rtspTransport,
+    '-fflags', 'nobuffer',
+    '-flags', 'low_delay',
+    '-max_delay', '100000',
+    '-analyzeduration', '0',
+    '-probesize', '32768',
+    '-reorder_queue_size', '0',
+    '-i', url,
+    '-map', '0:v:0',
+    '-vf', `scale=${RTSP_WIDTH}:${RTSP_HEIGHT}:flags=fast_bilinear,fps=${RTSP_FPS}`,
+    '-c:v', 'mjpeg',
+    '-q:v', String(mjpegQscale),
+    '-f', 'image2pipe',
+    '-an',
+    'pipe:1'
+  ];
+
+  const rtspProcess = spawn(FFMPEG_PATH, args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  cam.rtspProcess = rtspProcess;
+
+  let buffer = Buffer.alloc(0);
+  let stderrBuffer = '';
+  let droppedFrames = 0;
+  let receivedFrames = 0;
+  let lastStatsAt = Date.now();
+  const jpegStartMarker = Buffer.from([0xff, 0xd8]);
+  const jpegEndMarker = Buffer.from([0xff, 0xd9]);
+
+  function logRtspStats() {
+    const now = Date.now();
+    if (now - lastStatsAt < 5000) return;
+    const fps = Math.round((receivedFrames * 1000) / Math.max(1, now - lastStatsAt));
+    if (fps > 0 || droppedFrames > 0) {
+      console.log(`[RTSP:${id}] preview fps=${fps}, dropped=${droppedFrames}, transport=${rtspTransport}`);
+    }
+    receivedFrames = 0;
+    droppedFrames = 0;
+    lastStatsAt = now;
+  }
+
+  function acceptJpegFrame(jpeg) {
+    cam.frameCount++;
+    if (cam.status !== 'connected') {
+      cam.status = 'connected';
+      console.log(`[RTSP:${id}] connected, receiving MJPEG frames`);
+      notifyRtspStatus();
+    }
+
+    cam.latestJpeg = jpeg;
+    writeVideoFrame(id, jpeg);
+    receivedFrames++;
+
+    if (cam.frameCount === 1) {
+      console.log(`[RTSP:${id}] first MJPEG frame: ${jpeg.length} bytes`);
+    }
+    logRtspStats();
+  }
+
+  rtspProcess.stdout.on('data', (chunk) => {
+    buffer = Buffer.concat([buffer, chunk]);
+
+    if (buffer.length > RTSP_MJPEG_MAX_BUFFER_BYTES) {
+      const lastStart = buffer.lastIndexOf(jpegStartMarker);
+      buffer = lastStart >= 0 ? buffer.slice(lastStart) : Buffer.alloc(0);
+      droppedFrames++;
+    }
+
+    while (buffer.length > 4) {
+      const start = buffer.indexOf(jpegStartMarker);
+      if (start < 0) {
+        buffer = buffer.slice(-1);
+        return;
+      }
+      if (start > 0) {
+        buffer = buffer.slice(start);
+      }
+
+      const end = buffer.indexOf(jpegEndMarker, 2);
+      if (end < 0) return;
+
+      const jpeg = buffer.slice(0, end + 2);
+      buffer = buffer.slice(end + 2);
+
+      if (buffer.indexOf(jpegStartMarker) >= 0) {
+        droppedFrames++;
+        continue;
+      }
+      acceptJpegFrame(jpeg);
+    }
+  });
+
+  rtspProcess.stderr.on('data', (chunk) => {
+    stderrBuffer += chunk.toString();
+    if (stderrBuffer.length > 1000) stderrBuffer = stderrBuffer.slice(-1000);
+  });
+
+  rtspProcess.on('error', (err) => {
+    console.error(`[RTSP:${id}] ffmpeg错误:`, err.message);
+    cam.status = 'error';
+    cam.error = `ffmpeg启动失败: ${err.message}`;
+    cam.rtspProcess = null;
+    notifyRtspStatus();
+  });
+
+  rtspProcess.on('exit', (code, signal) => {
+    console.log(`[RTSP:${id}] 退出 code=${code} signal=${signal}`);
+    if (cam.status === 'connecting' || cam.status === 'connected') {
+      cam.status = 'error';
+      cam.error = code !== 0
+        ? `ffmpeg异常退出(code=${code}): ${stderrBuffer.trim().split('\n').pop() || '未知错误'}`
+        : '连接已断开';
+    }
+    if (cam.rtspProcess === rtspProcess) {
+      cam.rtspProcess = null;
+    }
+    notifyRtspStatus();
+  });
+
+  setTimeout(() => {
+    if (cam.rtspProcess === rtspProcess && cam.status === 'connecting') {
+      const lastError = stderrBuffer.trim().split('\n').pop();
+      console.error(`[RTSP:${id}] 连接超时（15秒无MJPEG帧）`, lastError || '');
+      cam.status = 'error';
+      cam.error = `连接超时：15秒无视频帧${lastError ? ` (${lastError})` : ''}`;
+      stopRtspCamera(id);
+      notifyRtspStatus();
+    }
+  }, 15000);
+};
+
 function getLanIps() {
   const ips = [];
   const virtualKeywords = ['vmware', 'virtualbox', 'docker', 'vpn', 'tun', 'tap', 'ppp', 'mihomo', 'veth', 'hyper-v'];
@@ -1021,6 +1520,44 @@ function broadcastSSE(data) {
   for (const id of dead) sseClients.delete(id);
 }
 
+// Global function for audio detector events
+global.broadcastAudioEvent = function(audioEvent) {
+  // Format audio alert for SSE broadcast
+  const alertData = {
+    alerts: [{
+      type: audioEvent.type || 'audio_alert',
+      title: audioEvent.title || '音频异常告警',
+      severity: audioEvent.severity || 'warning',
+      category: audioEvent.category || 'audio',
+      categoryCn: audioEvent.category === 'explosion' ? '爆炸声音' : '高分贝声音',
+      cameraId: audioEvent.cameraId || 'audio',
+      cameraLabel: audioEvent.cameraLabel || '音频检测',
+      confidence: 1.0,
+      timestamp: audioEvent.timestamp || new Date().toISOString(),
+      description: audioEvent.description || '',
+      db_level: audioEvent.db_level,
+      snapshotPath: audioEvent.snapshotPath || '',
+      skillId: 'audio-detector',
+      sourceSkill: 'audio-detector'
+    }],
+    detections: [],
+    text: audioEvent.description || '音频检测告警',
+    alert: true,
+    risk_level: audioEvent.severity === 'critical' ? 'high' : 'medium'
+  };
+  
+  console.log('[SSE] 广播音频告警:', audioEvent.title, audioEvent.db_level, 'dBFS');
+  broadcastSSE(alertData);
+  
+  // 发送企业微信推送
+  sendWechatAlert({
+    title: audioEvent.title || '音频异常告警',
+    description: audioEvent.description || `检测到${audioEvent.category === 'explosion' ? '爆炸' : '高分贝'}声音`,
+    camera: audioEvent.cameraId || 'audio',
+    cameraLabel: audioEvent.cameraLabel || '音频检测'
+  });
+};
+
 function getDetectionConfig() {
   return readDetectionConfig({ env: process.env });
 }
@@ -1055,6 +1592,7 @@ function updateAnalysisPausedState(reason) {
 
   aiResult = {
     ...aiResult,
+    cameraId: activeCameraId,
     text: reason,
     time: timeStr,
     analyzing: false,
@@ -1101,8 +1639,8 @@ function runAlertQuery(action, payload = {}) {
       clearTimeout(timer);
       reject(err);
     });
-    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.stdout.on('data', (chunk) => { stdout += chunk.toString('utf8'); });
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
     child.on('close', (code) => {
       if (finished) return;
       finished = true;
@@ -1338,6 +1876,7 @@ async function runAnalysisTick() {
 
     aiResult = {
       ...aiResult,
+      cameraId: analysisCameraId,
       analyzing: true,
       text: `正在分析当前画面... 已启用技能 ${enabledSkills.length} 个`,
       time: new Date().toLocaleTimeString('zh-CN', { hour12: false })
@@ -1390,6 +1929,7 @@ async function runAnalysisTick() {
       const timestamp = now.toISOString().replace('T', ' ').slice(0, 19);
 
       aiResult = {
+        cameraId: analysisCameraId,
         text: result.text,
         time: timeStr,
         analyzing: false,
@@ -1415,6 +1955,19 @@ async function runAnalysisTick() {
       writeCameraJsonLog(analysisCameraId, result);
       broadcastSSE(aiResult);
 
+      // 如果有告警，发送企业微信推送
+      if (result.alert && result.alerts && result.alerts.length > 0) {
+        for (const alert of result.alerts) {
+          sendWechatAlert({
+            title: alert.title || '系统安全告警',
+            description: alert.description || alert.message || result.text,
+            camera: alert.cameraId || alert.camera || analysisCameraId,
+            cameraLabel: alert.cameraLabel || (analysisCamera ? analysisCamera.label : ''),
+            time: alert.timestamp
+          });
+        }
+      }
+
       console.log(`[分析成功] ${timeStr}, 启用技能 ${enabledSkills.length} 个, ${useFramePathOnly ? 'framePath' : 'base64'}, 耗时 ${Date.now() - startTime}ms`);
     } catch (e) {
       const errMsg = `分析异常: ${e.message}`;
@@ -1423,6 +1976,7 @@ async function runAnalysisTick() {
 
       aiResult = {
         ...aiResult,
+        cameraId: analysisCameraId,
         text: errMsg,
         analyzing: false,
         time: timeStr,
@@ -2077,6 +2631,48 @@ app.post('/api/skills/load', (req, res) => {
   }
 });
 
+app.get('/api/skills/audio-detector/devices', async (req, res) => {
+  try {
+    const result = await skillManager.executeSkillAction('audio-detector', 'get_devices');
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/skills/audio-detector/config', async (req, res) => {
+  try {
+    const result = await skillManager.executeSkillAction('audio-detector', 'get_config');
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/skills/audio-detector/device', async (req, res) => {
+  try {
+    const { device_id, device_name } = req.body;
+    const result = await skillManager.executeSkillAction('audio-detector', 'set_device', { device_id, device_name });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/skills/audio-detector/config', async (req, res) => {
+  try {
+    const { alert_cooldown, detection_threshold, explosion_threshold } = req.body;
+    const result = await skillManager.executeSkillAction('audio-detector', 'update_config', {
+      alert_cooldown,
+      detection_threshold,
+      explosion_threshold
+    });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ==========================================
 // 录制管理 API
 // ==========================================
@@ -2169,6 +2765,27 @@ app.delete('/api/recordings/:camId/:fileName', (req, res) => {
   }
 });
 
+// 获取录制文件的完整路径（用于打开文件夹）
+app.get('/api/recordings/:camId/:fileName/path', (req, res) => {
+  const { camId, fileName } = req.params;
+  let filePath;
+  try {
+    filePath = getRecordingFilePath(camId, fileName);
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  // 返回绝对路径
+  res.json({ 
+    success: true,
+    filePath: path.resolve(filePath),
+    directory: path.dirname(path.resolve(filePath)),
+    fileName: path.basename(filePath)
+  });
+});
+
 // 提供录制文件下载/播放（直接读取文件）
 app.get('/api/recordings/:camId/:fileName', (req, res) => {
   const { camId, fileName } = req.params;
@@ -2240,6 +2857,9 @@ async function startServer() {
       process.exit(1);
     }
   }
+
+  // 启动企业微信推送
+  startWechatPush();
 
   httpsServer = https.createServer(sslOptions, app);
   httpsServer.listen(PORT, '0.0.0.0', () => {
@@ -2384,6 +3004,17 @@ async function cleanupRuntime() {
     try { await pc.close(); } catch (_) {}
   }
   peerConnections.clear();
+  
+  // 关闭企业微信推送进程
+  if (wechatPushProcess) {
+    try {
+      wechatPushProcess.stdin.write(JSON.stringify({ shutdown: true }) + '\n');
+      wechatPushProcess.kill();
+    } catch (e) {
+      console.error('[WeChat Push] 关闭失败:', e.message);
+    }
+    wechatPushProcess = null;
+  }
 }
 
 process.on('SIGINT', async () => {
@@ -2413,11 +3044,3 @@ process.on('exit', (code) => {
     }
   }
 });
-
-
-
-
-
-
-
-

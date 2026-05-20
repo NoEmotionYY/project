@@ -35,7 +35,7 @@ const ROOT_DIR = __dirname;
 const LOG_DIR = path.join(ROOT_DIR, 'logs');
 
 const NGINX_DIR = path.join(ROOT_DIR, 'nginx');
-const NGINX_BIN = path.join(NGINX_DIR, 'bin', (() => {
+let NGINX_BIN = path.join(NGINX_DIR, 'bin', (() => {
   const map = {
     win32: 'nginx-win.exe',
     darwin: 'nginx-mac',
@@ -44,6 +44,19 @@ const NGINX_BIN = path.join(NGINX_DIR, 'bin', (() => {
 
   return map[process.platform] || 'nginx-linux';
 })());
+
+// 优先使用系统安装的 nginx（如果可用）
+if (process.platform === 'darwin') {
+  try {
+    const systemNginx = '/opt/homebrew/bin/nginx';
+    if (fs.existsSync(systemNginx)) {
+      NGINX_BIN = systemNginx;
+      log(`使用系统安装的 nginx: ${systemNginx}`);
+    }
+  } catch (e) {
+    // 如果检查系统 nginx 失败，继续使用项目自带的 nginx
+  }
+}
 
 const NGINX_CONF_TEMPLATE = path.join(NGINX_DIR, 'conf', 'nginx.conf');
 const NGINX_TEMP_CONF = path.join(NGINX_DIR, 'conf', 'nginx-temp.conf');
@@ -269,7 +282,7 @@ function runNginxConfigTest(confPath) {
       cwd: ROOT_DIR,
       encoding: 'utf-8',
       windowsHide: true,
-      timeout: 8000
+      timeout: 15000
     }
   );
 

@@ -1,6 +1,6 @@
 require('dotenv').config({ quiet: true });
 
-const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron');
 const { spawn, fork, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -198,13 +198,23 @@ function ensureNginxRuntime() {
     }
   }
 
-  const certSource = path.join(source, 'cert.pem');
-  const keySource = path.join(source, 'key.pem');
+  const certSource = path.join(__dirname, 'cert.pem');
+  const keySource = path.join(__dirname, 'key.pem');
   const certDest = path.join(runtime, 'cert.pem');
   const keyDest = path.join(runtime, 'key.pem');
 
   if (fs.existsSync(certSource)) fs.copyFileSync(certSource, certDest);
   if (fs.existsSync(keySource)) fs.copyFileSync(keySource, keyDest);
+
+  // Fallback: try nginx source directory if not found in project root
+  if (!fs.existsSync(certDest)) {
+    const nginxCertSource = path.join(source, 'cert.pem');
+    if (fs.existsSync(nginxCertSource)) fs.copyFileSync(nginxCertSource, certDest);
+  }
+  if (!fs.existsSync(keyDest)) {
+    const nginxKeySource = path.join(source, 'key.pem');
+    if (fs.existsSync(nginxKeySource)) fs.copyFileSync(nginxKeySource, keyDest);
+  }
 
   const temps = [
     'logs',
@@ -237,8 +247,8 @@ function writeNginxConf(nginxDir, nodePort = 8082, nginxPort = 8443) {
 
   const conf = `worker_processes  1;
 daemon off;
-error_log ${logsPath}/error.log;
-pid ${logsPath}/nginx.pid;
+error_log "${logsPath}/error.log";
+pid "${logsPath}/nginx.pid";
 
 events {
     worker_connections  1024;
@@ -250,61 +260,61 @@ http {
     sendfile        on;
     keepalive_timeout  65;
 
-    client_body_temp_path ${tempPath}/client_body_temp;
-    proxy_temp_path ${tempPath}/proxy_temp;
-    fastcgi_temp_path ${tempPath}/fastcgi_temp;
-    uwsgi_temp_path ${tempPath}/uwsgi_temp;
-    scgi_temp_path ${tempPath}/scgi_temp;
+    client_body_temp_path "${tempPath}/client_body_temp";
+    proxy_temp_path "${tempPath}/proxy_temp";
+    fastcgi_temp_path "${tempPath}/fastcgi_temp";
+    uwsgi_temp_path "${tempPath}/uwsgi_temp";
+    scgi_temp_path "${tempPath}/scgi_temp";
 
     server {
         listen       ${nginxPort} ssl;
         server_name  localhost;
 
-        ssl_certificate      ${certPath};
-        ssl_certificate_key  ${keyPath};
+        ssl_certificate      "${certPath}";
+        ssl_certificate_key  "${keyPath}";
         ssl_session_cache    shared:SSL:1m;
         ssl_session_timeout  5m;
         ssl_ciphers  HIGH:!aNULL:!MD5;
         ssl_prefer_server_ciphers  on;
 
         location / {
-            root   ${htmlPath};
+            root   "${htmlPath}";
             index  webrtc-client.html;
             try_files $uri $uri/ =404;
         }
 
         location /monitor {
-            alias  ${htmlPath}/dashboard.html;
+            alias  "${htmlPath}/dashboard.html";
             default_type text/html;
         }
 
         location /test {
-            alias  ${htmlPath}/test-capture.html;
+            alias  "${htmlPath}/test-capture.html";
             default_type text/html;
         }
 
         location /desktop {
-            alias  ${htmlPath}/desktop-capture.html;
+            alias  "${htmlPath}/desktop-capture.html";
             default_type text/html;
         }
 
         location /recordings {
-            alias  ${htmlPath}/recordings.html;
+            alias  "${htmlPath}/recordings.html";
             default_type text/html;
         }
 
         location /events {
-            alias  ${htmlPath}/events.html;
+            alias  "${htmlPath}/events.html";
             default_type text/html;
         }
 
         location /settings {
-            alias  ${htmlPath}/settings.html;
+            alias  "${htmlPath}/settings.html";
             default_type text/html;
         }
 
         location /dashboard {
-            alias  ${htmlPath}/dashboard.html;
+            alias  "${htmlPath}/dashboard.html";
             default_type text/html;
         }
 
@@ -1370,6 +1380,18 @@ ipcMain.handle('open-skill-file', async () => {
     content,
     filePath
   };
+});
+
+// 打开文件夹（用于录制文件）
+ipcMain.handle('open-folder', async (_event, folderPath) => {
+  try {
+    // 使用 shell.openPath 打开文件夹
+    await shell.openPath(folderPath);
+    return { success: true };
+  } catch (err) {
+    console.error('[open-folder] 失败:', err.message);
+    return { success: false, error: err.message };
+  }
 });
 
 // ==========================================

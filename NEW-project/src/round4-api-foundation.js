@@ -56,7 +56,7 @@ const DEFAULT_DETECTION_CONFIG = {
     fire: 10,
     smoke: 10
   },
-  modelProfile: 'default',
+  modelProfile: 'fire',
   qwenReview: false,
   analysisIntervalMs: 10000,
   inference: {
@@ -69,7 +69,9 @@ const DEFAULT_DETECTION_CONFIG = {
     loudDbfs: -18,
     confirmFrames: 3,
     cooldownSeconds: 8,
-    staleMs: 3000
+    staleMs: 3000,
+    inputDeviceId: '',
+    inputDeviceLabel: ''
   }
 };
 
@@ -113,8 +115,13 @@ function parseBoolean(value, fallback = false) {
 function sanitizeDevice(value) {
   const text = String(value ?? '').trim();
   if (!text) return '';
+  return text.replace(/[^a-zA-Z0-9:.,_-]/g, '').slice(0, 32);
   // 支持 cpu、0、0,1、cuda:0 等常见写法，过滤 shell 特殊字符。
   return text.replace(/[^a-zA-Z0-9:.,_-]/g, '').slice(0, 32);
+}
+
+function sanitizeAudioDeviceText(value, maxLength = 256) {
+  return String(value ?? '').trim().replace(/[\u0000-\u001f\u007f]/g, '').slice(0, maxLength);
 }
 
 function parseIntegerRange(value, fallback, min, max) {
@@ -310,6 +317,12 @@ function validateDetectionConfig(input) {
       if (!Number.isInteger(parsed) || parsed < 500 || parsed > 60000) throw new Error('Invalid audio.staleMs');
       audio.staleMs = parsed;
     }
+    if (input.audio.inputDeviceId !== undefined) {
+      audio.inputDeviceId = sanitizeAudioDeviceText(input.audio.inputDeviceId);
+    }
+    if (input.audio.inputDeviceLabel !== undefined) {
+      audio.inputDeviceLabel = sanitizeAudioDeviceText(input.audio.inputDeviceLabel, 120);
+    }
     normalized.audio = audio;
   }
 
@@ -364,7 +377,9 @@ function sanitizeDetectionConfigForResponse(config) {
       loudDbfs: parseNumberRange(config.audio?.loudDbfs, DEFAULT_DETECTION_CONFIG.audio.loudDbfs, -90, 0),
       confirmFrames: parseIntegerRange(config.audio?.confirmFrames, DEFAULT_DETECTION_CONFIG.audio.confirmFrames, 1, 20),
       cooldownSeconds: parseNumberRange(config.audio?.cooldownSeconds, DEFAULT_DETECTION_CONFIG.audio.cooldownSeconds, 0, 3600),
-      staleMs: parseIntegerRange(config.audio?.staleMs, DEFAULT_DETECTION_CONFIG.audio.staleMs, 500, 60000)
+      staleMs: parseIntegerRange(config.audio?.staleMs, DEFAULT_DETECTION_CONFIG.audio.staleMs, 500, 60000),
+      inputDeviceId: sanitizeAudioDeviceText(config.audio?.inputDeviceId ?? DEFAULT_DETECTION_CONFIG.audio.inputDeviceId),
+      inputDeviceLabel: sanitizeAudioDeviceText(config.audio?.inputDeviceLabel ?? DEFAULT_DETECTION_CONFIG.audio.inputDeviceLabel, 120)
     }
   };
   const result = clone(source);

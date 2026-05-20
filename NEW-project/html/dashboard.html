@@ -6,117 +6,260 @@
   <title>CYPHER 威胁感知中心</title>
   <style>
     :root {
-      --bg: #070b14;
-      --panel: #111827;
-      --panel-soft: #172033;
-      --line: #2c3852;
-      --text: #e5e7eb;
-      --muted: #94a3b8;
-      --accent: #38bdf8;
-      --ok: #22c55e;
-      --warn: #f59e0b;
-      --danger: #ef4444;
+      --bg: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1629 100%);
+      --panel: rgba(255, 255, 255, 0.08);
+      --panel-soft: rgba(255, 255, 255, 0.05);
+      --line: rgba(255, 255, 255, 0.12);
+      --text: #ffffff;
+      --muted: rgba(255, 255, 255, 0.6);
+      --accent: #00d4ff;
+      --ok: #34d399;
+      --warn: #fbbf24;
+      --danger: #f87171;
+      --glass-blur: blur(20px);
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+      --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+      --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+      --glow-accent: 0 0 20px rgba(0, 212, 255, 0.4);
+      --glow-ok: 0 0 20px rgba(52, 211, 153, 0.4);
+      --glow-warn: 0 0 20px rgba(251, 191, 36, 0.4);
+      --glow-danger: 0 0 20px rgba(248, 113, 113, 0.4);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
       background: var(--bg);
+      background-attachment: fixed;
       color: var(--text);
-      font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
     header {
-      height: 60px;
+      height: 64px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 0 24px;
-      background: rgba(7, 11, 20, 0.92);
+      padding: 0 28px;
+      background: rgba(255, 255, 255, 0.06);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
       border-bottom: 1px solid var(--line);
       position: sticky;
       top: 0;
       z-index: 3;
+      box-shadow: var(--shadow-sm);
     }
-    .brand { font-weight: 700; }
-    .brand span { color: var(--accent); }
-    nav { display: flex; gap: 10px; flex-wrap: wrap; }
+    .brand { 
+      font-weight: 700; 
+      font-size: 18px;
+      letter-spacing: -0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .brand::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+      box-shadow: var(--glow-accent);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.7; transform: scale(1.1); }
+    }
+    .brand span { 
+      color: var(--accent);
+      text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+    }
+    nav { display: flex; gap: 12px; flex-wrap: wrap; }
     nav a, nav button {
       border: 1px solid var(--line);
       background: var(--panel-soft);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       color: var(--text);
-      padding: 8px 12px;
-      border-radius: 7px;
+      padding: 10px 16px;
+      border-radius: 12px;
       text-decoration: none;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      font-weight: 500;
+      font-size: 14px;
     }
-    nav a:hover, nav button:hover { border-color: var(--accent); }
+    nav a:hover, nav button:hover { 
+      border-color: var(--accent);
+      background: rgba(0, 212, 255, 0.1);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+    }
+    nav a.active, nav button.active {
+      border-color: var(--accent);
+      background: rgba(0, 212, 255, 0.15);
+      box-shadow: var(--glow-accent);
+    }
     main {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 360px;
-      gap: 18px;
-      padding: 18px;
+      grid-template-columns: minmax(0, 1fr) 380px;
+      gap: 20px;
+      padding: 24px;
     }
     .panel {
       background: var(--panel);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 16px;
       overflow: hidden;
+      box-shadow: var(--shadow-md);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .panel:hover {
+      box-shadow: var(--shadow-lg);
     }
     .panel-head {
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 12px;
-      padding: 14px 16px;
+      padding: 18px 20px;
       border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
     }
     .video-wrap {
       position: relative;
       aspect-ratio: 16 / 9;
-      background: #020617;
+      background: rgba(0, 0, 0, 0.3);
       display: flex;
       align-items: center;
       justify-content: center;
       color: var(--muted);
       overflow: hidden;
     }
-    .video-wrap img { width: 100%; height: 100%; object-fit: contain; background: #020617; }
+    .video-wrap img { 
+      width: 100%; 
+      height: 100%; 
+      object-fit: contain; 
+      background: rgba(0, 0, 0, 0.3);
+    }
+    .detection-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .detection-box {
+      position: absolute;
+      box-sizing: border-box;
+      border: 2px solid var(--box-color, #ef4444);
+      border-radius: 6px;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 0 18px rgba(239, 68, 68, 0.35);
+    }
+    .detection-label {
+      position: absolute;
+      left: -2px;
+      top: -28px;
+      max-width: calc(100% + 4px);
+      padding: 4px 8px;
+      border-radius: 6px 6px 6px 0;
+      background: var(--box-color, #ef4444);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+    }
+    .detection-box.inside-label .detection-label {
+      top: 0;
+      border-radius: 3px 0 6px 0;
+    }
     .video-label {
       position: absolute;
-      top: 12px;
-      left: 12px;
-      background: rgba(2, 6, 23, 0.78);
+      top: 16px;
+      left: 16px;
+      z-index: 3;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       border: 1px solid var(--line);
       border-radius: 99px;
-      padding: 6px 10px;
-      font-size: 12px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: var(--shadow-sm);
     }
     .camera-list {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-      gap: 10px;
-      padding: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      padding: 16px;
     }
     button {
       border: 1px solid var(--line);
       background: var(--panel-soft);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       color: var(--text);
-      padding: 8px 10px;
-      border-radius: 7px;
+      padding: 12px 14px;
+      border-radius: 12px;
       cursor: pointer;
       font: inherit;
       text-align: left;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      font-weight: 500;
     }
-    button.active, button:hover { border-color: var(--accent); }
+    button.active, button:hover { 
+      border-color: var(--accent);
+      background: rgba(0, 212, 255, 0.12);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 212, 255, 0.25);
+    }
     .status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
-    .dot.ok { background: var(--ok); }
-    .dot.warn { background: var(--warn); }
-    .feed { padding: 12px; display: grid; gap: 10px; max-height: calc(100vh - 140px); overflow: auto; }
+    .dot { 
+      width: 10px; 
+      height: 10px; 
+      border-radius: 50%; 
+      background: var(--muted);
+      box-shadow: 0 0 8px currentColor;
+      transition: all 0.3s ease;
+    }
+    .dot.ok { 
+      background: var(--ok);
+      box-shadow: var(--glow-ok);
+      animation: pulse-ok 2s ease-in-out infinite;
+    }
+    @keyframes pulse-ok {
+      0%, 100% { box-shadow: 0 0 8px var(--ok); }
+      50% { box-shadow: 0 0 16px var(--ok), 0 0 24px var(--ok); }
+    }
+    .dot.warn { 
+      background: var(--warn);
+      box-shadow: var(--glow-warn);
+      animation: pulse-warn 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse-warn {
+      0%, 100% { box-shadow: 0 0 8px var(--warn); }
+      50% { box-shadow: 0 0 16px var(--warn), 0 0 24px var(--warn); }
+    }
+    .feed { 
+      padding: 16px; 
+      display: grid; 
+      gap: 12px; 
+      max-height: calc(100vh - 160px); 
+      overflow: auto;
+    }
     .analysis-panel {
       border-top: 1px solid var(--line);
-      padding: 14px 16px;
+      padding: 18px 20px;
       display: grid;
-      gap: 10px;
+      gap: 12px;
+      background: rgba(255, 255, 255, 0.02);
     }
     .analysis-bar {
       display: flex;
@@ -124,80 +267,189 @@
       gap: 12px;
       align-items: center;
       color: var(--muted);
-      font-size: 12px;
+      font-size: 13px;
       flex-wrap: wrap;
     }
     .analysis-content {
-      min-height: 118px;
-      max-height: 260px;
+      min-height: 120px;
+      max-height: 280px;
       overflow: auto;
       border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #0b1220;
-      padding: 12px;
-      line-height: 1.6;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      padding: 16px;
+      line-height: 1.9;
+      font-size: 14px;
+      letter-spacing: 0.2px;
       white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .analysis-content::-webkit-scrollbar { width: 6px; }
+    .analysis-content::-webkit-scrollbar-track { background: transparent; }
+    .analysis-content::-webkit-scrollbar-thumb { 
+      background: rgba(255, 255, 255, 0.15); 
+      border-radius: 3px;
+    }
+    .analysis-content::-webkit-scrollbar-thumb:hover { 
+      background: rgba(255, 255, 255, 0.25); 
     }
     .analysis-tags {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-top: 8px;
+      margin-top: 10px;
     }
     .analysis-tag {
       border: 1px solid var(--line);
       border-radius: 99px;
-      padding: 3px 8px;
+      padding: 4px 10px;
       color: var(--muted);
       font-size: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
     }
     .alert-card {
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 12px;
       background: var(--panel-soft);
-      padding: 12px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      padding: 14px;
       display: grid;
-      gap: 8px;
+      gap: 10px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
     }
-    .alert-card.critical { border-color: rgba(239, 68, 68, 0.55); }
-    .alert-card.warning { border-color: rgba(245, 158, 11, 0.55); }
-    .alert-card.info { border-color: rgba(56, 189, 248, 0.45); }
+    .alert-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+      transition: left 0.5s ease;
+    }
+    .alert-card:hover::before {
+      left: 100%;
+    }
+    .alert-card:hover {
+      transform: translateX(4px);
+      box-shadow: var(--shadow-sm);
+    }
+    .alert-card.critical { 
+      border-color: rgba(248, 113, 113, 0.5);
+      background: rgba(248, 113, 113, 0.08);
+      animation: slideIn-critical 0.4s ease-out;
+    }
+    @keyframes slideIn-critical {
+      from {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+    .alert-card.warning { 
+      border-color: rgba(251, 191, 36, 0.5);
+      background: rgba(251, 191, 36, 0.08);
+      animation: slideIn-warning 0.4s ease-out;
+    }
+    @keyframes slideIn-warning {
+      from {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+    .alert-card.info { 
+      border-color: rgba(0, 212, 255, 0.4);
+      background: rgba(0, 212, 255, 0.06);
+      animation: slideIn-info 0.4s ease-out;
+    }
+    @keyframes slideIn-info {
+      from {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
     .alert-top { display: flex; justify-content: space-between; gap: 10px; }
     .title { font-weight: 700; }
     .meta { color: var(--muted); font-size: 12px; line-height: 1.45; }
-    .badge { font-size: 12px; border-radius: 99px; padding: 3px 8px; border: 1px solid var(--line); }
-    .critical .badge { color: var(--danger); }
-    .warning .badge { color: var(--warn); }
-    .info .badge { color: var(--accent); }
-    .empty { color: var(--muted); text-align: center; padding: 36px 12px; }
+    .badge { 
+      font-size: 12px; 
+      border-radius: 99px; 
+      padding: 4px 10px; 
+      border: 1px solid var(--line);
+      font-weight: 600;
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+    }
+    .critical .badge { 
+      color: var(--danger);
+      background: rgba(248, 113, 113, 0.15);
+    }
+    .warning .badge { 
+      color: var(--warn);
+      background: rgba(251, 191, 36, 0.15);
+    }
+    .info .badge { 
+      color: var(--accent);
+      background: rgba(0, 212, 255, 0.12);
+    }
+    .empty { 
+      color: var(--muted); 
+      text-align: center; 
+      padding: 48px 16px;
+      font-size: 14px;
+    }
     .modal-backdrop {
       position: fixed;
       inset: 0;
       z-index: 20;
-      background: rgba(2, 6, 23, 0.72);
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 18px;
+      padding: 24px;
     }
     .modal-backdrop[hidden] { display: none; }
     .skill-modal {
-      width: min(860px, 100%);
-      max-height: min(760px, calc(100vh - 36px));
+      width: min(900px, 100%);
+      max-height: min(800px, calc(100vh - 48px));
       overflow: hidden;
-      background: var(--panel);
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 20px;
       display: grid;
       grid-template-rows: auto auto 1fr auto;
+      box-shadow: var(--shadow-lg);
     }
     .modal-head, .modal-actions {
-      padding: 14px 16px;
+      padding: 18px 20px;
       border-bottom: 1px solid var(--line);
       display: flex;
       justify-content: space-between;
       gap: 12px;
       align-items: center;
+      background: rgba(255, 255, 255, 0.03);
     }
     .modal-actions {
       border-top: 1px solid var(--line);
@@ -206,24 +458,44 @@
     }
     .skill-tabs {
       display: flex;
-      gap: 8px;
-      padding: 12px 16px;
+      gap: 10px;
+      padding: 14px 20px;
       border-bottom: 1px solid var(--line);
     }
-    .skill-tab[aria-selected="true"] { border-color: var(--accent); }
+    .skill-tab {
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      padding: 10px 16px;
+      border-radius: 10px;
+      transition: all 0.3s ease;
+    }
+    .skill-tab[aria-selected="true"] { 
+      border-color: var(--accent);
+      background: rgba(0, 212, 255, 0.12);
+      box-shadow: 0 0 12px rgba(0, 212, 255, 0.2);
+    }
     .skill-modal-body {
       overflow: auto;
-      padding: 14px 16px;
+      padding: 18px 20px;
       display: grid;
-      gap: 10px;
+      gap: 12px;
     }
     .skill-row {
       border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 12px;
+      border-radius: 12px;
+      padding: 14px;
       background: var(--panel-soft);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       display: grid;
-      gap: 8px;
+      gap: 10px;
+      transition: all 0.3s ease;
+    }
+    .skill-row:hover {
+      border-color: rgba(0, 212, 255, 0.3);
+      box-shadow: var(--shadow-sm);
     }
     .skill-row-top {
       display: flex;
@@ -233,11 +505,13 @@
     }
     .skill-row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     .safety-note {
-      border: 1px solid rgba(56, 189, 248, 0.35);
-      background: rgba(56, 189, 248, 0.08);
-      border-radius: 8px;
-      padding: 12px;
-      line-height: 1.7;
+      border: 1px solid rgba(0, 212, 255, 0.3);
+      background: rgba(0, 212, 255, 0.08);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 16px;
+      line-height: 1.8;
       color: var(--text);
     }
     @media (max-width: 980px) {
@@ -269,7 +543,7 @@
       </div>
       <div class="video-wrap">
         <img id="video-frame" alt="当前摄像头画面">
-        <div id="video-placeholder">等待摄像头帧</div>
+        <div class="detection-overlay" id="detection-overlay" aria-hidden="true"></div>
         <div class="video-label" id="active-camera-label">active</div>
       </div>
       <div class="camera-list" id="camera-list"></div>
@@ -328,13 +602,19 @@
     let frameLoading = false;
     let lastFrameRequestAt = 0;
     let sseConnected = false;
+    let latestDetections = [];
+    let latestDetectionsAt = 0;
+    let latestDetectionsCameraId = '';
+    let detectionOverlayTimer = null;
     const FRAME_REFRESH_MS = 500;
     const ANALYSIS_FALLBACK_MS = 10000;
+    const DETECTION_OVERLAY_TTL_MS = 12000;
     const seenAlerts = new Set();
     const alertFeed = document.getElementById('alert-feed');
     const analysisContent = document.getElementById('analysis-content');
     const analysisStatus = document.getElementById('analysis-status');
     const analysisTime = document.getElementById('analysis-time');
+    const detectionOverlay = document.getElementById('detection-overlay');
     const skillModal = document.getElementById('skill-modal');
     const skillModalBody = document.getElementById('skill-modal-body');
 
@@ -367,6 +647,156 @@
       if (!value) return new Date().toLocaleTimeString('zh-CN', { hour12: false });
       if (typeof value === 'number') return new Date(value).toLocaleString('zh-CN', { hour12: false });
       return String(value);
+    }
+
+    function clampNumber(value, min, max) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return min;
+      return Math.max(min, Math.min(max, number));
+    }
+
+    function detectionColor(severity) {
+      const normalized = String(severity || '').toLowerCase();
+      if (normalized === 'critical' || normalized === 'danger' || normalized === 'high') return '#ef4444';
+      if (normalized === 'warning' || normalized === 'medium') return '#f59e0b';
+      return '#00d4ff';
+    }
+
+    function detectionLabel(detection) {
+      const label = detection.name || detection.label || detection.className || detection.class || detection.type || 'object';
+      const confidence = Number(detection.confidence ?? detection.conf ?? detection.score);
+      return Number.isFinite(confidence) ? `${label} ${(confidence * 100).toFixed(0)}%` : String(label);
+    }
+
+    function normalizeDetectionBox(detection, sourceWidth, sourceHeight) {
+      if (!detection || !sourceWidth || !sourceHeight) return null;
+      const source = detection.box || detection.bbox || detection.xyxy || detection.rect;
+      if (!source) return null;
+
+      let x1;
+      let y1;
+      let x2;
+      let y2;
+
+      if (Array.isArray(source)) {
+        if (source.length < 4) return null;
+        x1 = Number(source[0]);
+        y1 = Number(source[1]);
+        const third = Number(source[2]);
+        const fourth = Number(source[3]);
+        const format = String(detection.boxFormat || detection.bboxFormat || '').toLowerCase();
+        if (format.includes('xywh')) {
+          x2 = x1 + third;
+          y2 = y1 + fourth;
+        } else {
+          x2 = third;
+          y2 = fourth;
+        }
+      } else {
+        x1 = Number(source.x1 ?? source.left ?? source.x ?? 0);
+        y1 = Number(source.y1 ?? source.top ?? source.y ?? 0);
+        x2 = source.x2 !== undefined || source.right !== undefined
+          ? Number(source.x2 ?? source.right)
+          : x1 + Number(source.w ?? source.width ?? 0);
+        y2 = source.y2 !== undefined || source.bottom !== undefined
+          ? Number(source.y2 ?? source.bottom)
+          : y1 + Number(source.h ?? source.height ?? 0);
+      }
+
+      if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+      if (x1 >= 0 && y1 >= 0 && x2 <= 1 && y2 <= 1) {
+        x1 *= sourceWidth;
+        x2 *= sourceWidth;
+        y1 *= sourceHeight;
+        y2 *= sourceHeight;
+      }
+
+      const left = clampNumber(Math.min(x1, x2), 0, sourceWidth - 1);
+      const top = clampNumber(Math.min(y1, y2), 0, sourceHeight - 1);
+      const right = clampNumber(Math.max(x1, x2), 0, sourceWidth);
+      const bottom = clampNumber(Math.max(y1, y2), 0, sourceHeight);
+      const width = Math.max(1, right - left);
+      const height = Math.max(1, bottom - top);
+      return { x: left, y: top, w: width, h: height };
+    }
+
+    function getRenderedImageRect(image, container) {
+      const containerWidth = container.clientWidth;
+      const containerHeight = container.clientHeight;
+      const sourceWidth = image.naturalWidth || containerWidth;
+      const sourceHeight = image.naturalHeight || containerHeight;
+      if (!containerWidth || !containerHeight || !sourceWidth || !sourceHeight) return null;
+
+      const containerRatio = containerWidth / containerHeight;
+      const sourceRatio = sourceWidth / sourceHeight;
+      if (sourceRatio > containerRatio) {
+        const width = containerWidth;
+        const height = width / sourceRatio;
+        return { left: 0, top: (containerHeight - height) / 2, width, height, sourceWidth, sourceHeight };
+      }
+      const height = containerHeight;
+      const width = height * sourceRatio;
+      return { left: (containerWidth - width) / 2, top: 0, width, height, sourceWidth, sourceHeight };
+    }
+
+    function clearDetectionOverlay() {
+      latestDetections = [];
+      latestDetectionsAt = 0;
+      latestDetectionsCameraId = activeCameraId || 'active';
+      if (detectionOverlayTimer) clearTimeout(detectionOverlayTimer);
+      renderDetectionOverlay();
+    }
+
+    function setLatestDetections(detections, cameraId) {
+      latestDetections = Array.isArray(detections) ? detections : [];
+      latestDetectionsAt = Date.now();
+      latestDetectionsCameraId = cameraId || activeCameraId || 'active';
+      if (detectionOverlayTimer) clearTimeout(detectionOverlayTimer);
+      if (latestDetections.length) {
+        detectionOverlayTimer = setTimeout(() => {
+          if (Date.now() - latestDetectionsAt >= DETECTION_OVERLAY_TTL_MS) clearDetectionOverlay();
+        }, DETECTION_OVERLAY_TTL_MS + 100);
+      }
+      renderDetectionOverlay();
+    }
+
+    function renderDetectionOverlay() {
+      if (!detectionOverlay) return;
+      const image = document.getElementById('video-frame');
+      const container = image?.parentElement;
+      const activeId = activeCameraId || 'active';
+      const cameraMatches = !latestDetectionsCameraId
+        || latestDetectionsCameraId === activeId
+        || latestDetectionsCameraId === 'active'
+        || activeId === 'active';
+      const stale = latestDetectionsAt > 0 && Date.now() - latestDetectionsAt > DETECTION_OVERLAY_TTL_MS;
+
+      if (!image || !container || image.style.display === 'none' || !image.naturalWidth || !image.naturalHeight || stale || !cameraMatches || !latestDetections.length) {
+        detectionOverlay.innerHTML = '';
+        return;
+      }
+
+      const rect = getRenderedImageRect(image, container);
+      if (!rect) {
+        detectionOverlay.innerHTML = '';
+        return;
+      }
+
+      detectionOverlay.innerHTML = latestDetections.map(detection => {
+        const box = normalizeDetectionBox(detection, rect.sourceWidth, rect.sourceHeight);
+        if (!box) return '';
+        const left = rect.left + (box.x / rect.sourceWidth) * rect.width;
+        const top = rect.top + (box.y / rect.sourceHeight) * rect.height;
+        const width = (box.w / rect.sourceWidth) * rect.width;
+        const height = (box.h / rect.sourceHeight) * rect.height;
+        const color = detectionColor(detection.severity || detection.risk_level || detection.level);
+        const insideLabel = top < 30 ? ' inside-label' : '';
+        return `
+          <div class="detection-box${insideLabel}" style="--box-color:${color};left:${left}px;top:${top}px;width:${width}px;height:${height}px">
+            <span class="detection-label">${escapeHtml(detectionLabel(detection))}</span>
+          </div>
+        `;
+      }).join('');
     }
 
     function alertId(alert) {
@@ -427,6 +857,8 @@
       }
     }
 
+    // Audio alert siren removed by user request
+
     function handleRealtimePayload(data) {
       const alerts = Array.isArray(data.alerts) ? data.alerts : [];
       if (alerts.length) alerts.forEach(pushAlert);
@@ -435,6 +867,7 @@
 
     function updateAnalysisDisplay(data) {
       const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+      const hasDetectionPayload = Object.prototype.hasOwnProperty.call(data, 'detections');
       const detections = Array.isArray(data.detections) ? data.detections : [];
       const details = Array.isArray(data.alert_details) ? data.alert_details : [];
       const risk = data.risk_level || (alerts.length ? 'high' : 'none');
@@ -458,6 +891,7 @@
       if (data.evacuate_text) lines.push(`疏散提示：${data.evacuate_text}`);
       if (!lines.length) lines.push(data.analyzing ? 'AI 正在分析当前画面...' : '等待摄像头帧或 AI 分析结果。');
 
+      if (hasDetectionPayload) setLatestDetections(detections, data.cameraId || data.camera_id || activeCameraId);
       analysisStatus.textContent = `状态：${status} / 风险：${risk}`;
       analysisTime.textContent = `更新时间：${timeText(data.time || data.timestamp)}`;
       analysisContent.innerHTML = `
@@ -470,18 +904,51 @@
       `;
     }
 
-    function setSseStatus(text, state) {
-      document.getElementById('sse-status').textContent = text;
+    // 视频流状态：0=无画面(红), 1=有画面(绿)
+    let videoStreamState = 0;
+    let sseIsConnected = false; // SSE连接状态
+
+    function setSseStatus(state) {
       const dot = document.getElementById('sse-dot');
-      dot.className = `dot ${state || ''}`;
+      const statusText = document.getElementById('sse-status');
+      
+      // 根据SSE连接状态和视频流状态自动决定文字和颜色
+      if (sseIsConnected && videoStreamState === 1) {
+        statusText.textContent = 'SSE 已连接';
+        dot.className = 'dot ok'; // 绿色：已连接且有画面
+      } else if (sseIsConnected && videoStreamState === 0) {
+        statusText.textContent = 'SSE 未连接';
+        dot.className = 'dot danger'; // 红色：已连接但无画面
+      } else if (!sseIsConnected) {
+        statusText.textContent = 'SSE 未连接';
+        dot.className = 'dot danger'; // 红色：未连接
+      } else {
+        dot.className = `dot ${state || ''}`;
+      }
       sseConnected = state === 'ok';
+    }
+
+    function updateVideoStreamState(hasFrame) {
+      if (hasFrame) {
+        videoStreamState = 1; // 有画面
+      } else {
+        videoStreamState = 0; // 无画面
+      }
+      // 立即刷新状态显示
+      setSseStatus(videoStreamState === 1 ? 'ok' : 'danger');
     }
 
     function connectSse() {
       if (eventSource) eventSource.close();
       eventSource = new EventSource('/api/events');
-      eventSource.onopen = () => setSseStatus('SSE 已连接', 'ok');
-      eventSource.onerror = () => setSseStatus('SSE 重连中', 'warn');
+      eventSource.onopen = () => {
+        sseIsConnected = true;
+        setSseStatus('ok');
+      };
+      eventSource.onerror = () => {
+        sseIsConnected = false;
+        setSseStatus('danger');
+      };
       eventSource.onmessage = event => {
         try {
           const data = JSON.parse(event.data);
@@ -508,14 +975,13 @@
 
     function streamEndpoint() {
       if (!activeCameraId || activeCameraId === 'webrtc' || activeCameraId === 'active') {
-        return '/api/stream?fps=15&boxes=1';
+        return '/api/stream?fps=25&boxes=0';
       }
-      return `/api/cameras/${encodeURIComponent(activeCameraId)}/stream?fps=15&boxes=1`;
+      return `/api/cameras/${encodeURIComponent(activeCameraId)}/stream?fps=25&boxes=0`;
     }
 
     function refreshStream(force = false) {
       const image = document.getElementById('video-frame');
-      const placeholder = document.getElementById('video-placeholder');
       const base = streamEndpoint();
       const src = `${base}&t=${Date.now()}`;
 
@@ -524,18 +990,19 @@
 
       image.onload = () => {
         image.style.display = 'block';
-        placeholder.style.display = 'none';
+        // 有画面时更新状态
+        updateVideoStreamState(true);
+        renderDetectionOverlay();
       };
 
       image.onerror = () => {
         image.style.display = 'none';
-        placeholder.style.display = 'block';
-        const label = activeCameraId || 'active';
-        placeholder.textContent = `等待视频流：${label}。请打开推流页，或在设置页启动 RTSP/IP 摄像头。`;
+        // 无画面时更新状态
+        updateVideoStreamState(false);
+        renderDetectionOverlay();
       };
 
-      placeholder.style.display = 'block';
-      placeholder.textContent = `正在连接视频流：${activeCameraId || 'active'}...`;
+      image.style.display = 'none';
       image.src = src;
     }
 
@@ -556,6 +1023,7 @@
         button.addEventListener('click', async () => {
           const nextId = button.dataset.camera;
           activeCameraId = nextId;
+          clearDetectionOverlay();
 
           try {
             await fetch('/api/cameras/active', {
@@ -590,6 +1058,7 @@
         }
         renderCameras();
         if (previousActiveId !== activeCameraId) {
+          clearDetectionOverlay();
           refreshStream(true);
         }
       } catch (error) {
@@ -710,9 +1179,9 @@
     connectSse();
     loadCameras().then(() => refreshStream(true));
     pollAnalysis(true);
+    window.addEventListener('resize', renderDetectionOverlay);
     setInterval(loadCameras, 3000);
     setInterval(pollAnalysis, 3000);
   </script>
 </body>
 </html>
-

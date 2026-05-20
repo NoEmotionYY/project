@@ -11,13 +11,25 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --bg-color: #0a0a0a;
-            --card-bg: #1a1a1a;
-            --primary: #3b82f6;
-            --success: #22c55e;
-            --danger: #ef4444;
-            --text-main: #f1f5f9;
-            --text-sub: #94a3b8;
+            --bg: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1629 100%);
+            --card-bg: rgba(255, 255, 255, 0.08);
+            --panel: rgba(255, 255, 255, 0.08);
+            --panel-soft: rgba(255, 255, 255, 0.05);
+            --text: #ffffff;
+            --text-muted: rgba(255, 255, 255, 0.6);
+            --line: rgba(255, 255, 255, 0.12);
+            --border: rgba(255, 255, 255, 0.12);
+            --primary: #00d4ff;
+            --accent: #00d4ff;
+            --primary-light: #00e5ff;
+            --success: #34d399;
+            --ok: #34d399;
+            --danger: #f87171;
+            --warning: #fbbf24;
+            --glass-blur: blur(20px);
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+            --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
 
         * {
@@ -29,26 +41,31 @@
         }
 
         body {
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            background-attachment: fixed;
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             height: 100vh;
             height: 100dvh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
             touch-action: manipulation;
+            -webkit-font-smoothing: antialiased;
         }
 
         header {
             height: 56px;
-            background-color: var(--card-bg);
+            background: var(--card-bg);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
+            border-bottom: 1px solid var(--line);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 16px;
-            border-bottom: 1px solid #333;
+            padding: 0 20px;
             flex-shrink: 0;
+            box-shadow: var(--shadow-sm);
         }
 
         .logo {
@@ -60,6 +77,7 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            letter-spacing: -0.3px;
         }
 
         .logo span {
@@ -68,36 +86,45 @@
         }
 
         .logo i {
-            color: var(--primary);
+            color: var(--primary-light);
+            font-size: 18px;
         }
 
         .status-badge {
             display: flex;
             align-items: center;
-            gap: 6px;
-            padding: 4px 10px;
-            border-radius: 12px;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 99px;
             font-size: 0.8rem;
-            background: rgba(239, 68, 68, 0.15);
+            background: rgba(248, 113, 113, 0.12);
             color: var(--danger);
+            border: 1px solid rgba(248, 113, 113, 0.25);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            font-weight: 600;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .status-badge.connected {
-            background: rgba(34, 197, 94, 0.15);
+            background: linear-gradient(135deg, rgba(52, 211, 153, 0.2), rgba(52, 211, 153, 0.1));
             color: var(--success);
+            border-color: rgba(52, 211, 153, 0.3);
+            box-shadow: 0 0 16px rgba(52, 211, 153, 0.3);
         }
 
         .pulse-dot {
-            width: 6px;
-            height: 6px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             background-color: currentColor;
             animation: pulse 2s infinite;
+            box-shadow: 0 0 10px currentColor;
         }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.15); }
         }
 
         .video-container {
@@ -109,6 +136,8 @@
             justify-content: center;
             min-height: 0;
             overflow: hidden;
+            border-top: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
         }
 
         video {
@@ -125,105 +154,179 @@
 
         .placeholder {
             text-align: center;
-            color: #555;
+            color: var(--text-muted);
             padding: 40px 20px;
+            animation: fadeIn 0.5s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .placeholder i {
             font-size: clamp(3rem, 15vw, 4rem);
             margin-bottom: 16px;
             display: block;
+            color: rgba(0, 212, 255, 0.3);
+            filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.2));
         }
 
         .placeholder p {
-            font-size: clamp(0.9rem, 4vw, 1rem);
+            font-size: clamp(0.95rem, 4.5vw, 1.1rem);
             margin-bottom: 8px;
+            font-weight: 500;
         }
 
         .placeholder .hint {
-            font-size: clamp(0.75rem, 3.5vw, 0.85rem);
-            color: #666;
+            font-size: clamp(0.8rem, 3.5vw, 0.9rem);
+            color: var(--text-muted);
+            opacity: 0.8;
         }
 
         .controls {
-            padding: 16px;
-            padding-bottom: max(16px, env(safe-area-inset-bottom));
-            background-color: var(--card-bg);
-            border-top: 1px solid #333;
+            padding: 20px;
+            padding-bottom: max(20px, env(safe-area-inset-bottom));
+            background: var(--card-bg);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
+            border-top: 1px solid var(--line);
             flex-shrink: 0;
+            box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.2);
         }
 
         .btn {
             width: 100%;
-            padding: 16px;
+            padding: 18px 24px;
             border: none;
-            border-radius: 12px;
-            font-size: clamp(0.95rem, 4.5vw, 1.05rem);
-            font-weight: 600;
+            border-radius: 14px;
+            font-size: clamp(1rem, 4.5vw, 1.1rem);
+            font-weight: 700;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
-            transition: all 0.15s;
-            min-height: 52px;
+            gap: 10px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            min-height: 56px;
+            letter-spacing: -0.2px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
 
         .btn-primary {
-            background-color: var(--primary);
-            color: white;
+            background: linear-gradient(135deg, var(--primary) 0%, #0099cc 100%);
+            color: #00111d;
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            box-shadow: 0 4px 16px rgba(0, 212, 255, 0.4), 0 0 0 0 rgba(0, 212, 255, 0);
         }
 
-        .btn-primary:active {
-            transform: scale(0.98);
-            background-color: #2563eb;
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(0, 212, 255, 0.5), 0 0 0 0 rgba(0, 212, 255, 0.2);
+        }
+
+        .btn-primary:active:not(:disabled) {
+            transform: translateY(0) scale(0.98);
+            box-shadow: 0 2px 8px rgba(0, 212, 255, 0.3);
         }
 
         .btn-danger {
-            background-color: var(--danger);
+            background: linear-gradient(135deg, var(--danger) 0%, #dc2626 100%);
             color: white;
+            border: 1px solid rgba(248, 113, 113, 0.3);
+            box-shadow: 0 4px 16px rgba(248, 113, 113, 0.4), 0 0 0 0 rgba(248, 113, 113, 0);
         }
 
-        .btn-danger:active {
-            transform: scale(0.98);
-            background-color: #dc2626;
+        .btn-danger:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(248, 113, 113, 0.5), 0 0 0 0 rgba(248, 113, 113, 0.2);
+        }
+
+        .btn-danger:active:not(:disabled) {
+            transform: translateY(0) scale(0.98);
+            box-shadow: 0 2px 8px rgba(248, 113, 113, 0.3);
         }
 
         .btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .btn.btn-loading {
+            position: relative;
+            pointer-events: none;
+        }
+
+        .btn.btn-loading i {
+            opacity: 0;
+        }
+
+        .btn.btn-loading::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 3px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         .info-panel {
-            padding: 10px 16px;
-            background: rgba(59, 130, 246, 0.1);
-            border-top: 1px solid #333;
-            font-size: clamp(0.75rem, 3.5vw, 0.85rem);
-            color: var(--text-sub);
+            padding: 12px 20px;
+            background: var(--panel-soft);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-top: 1px solid var(--line);
+            font-size: clamp(0.8rem, 3.5vw, 0.9rem);
+            color: var(--text-muted);
             word-break: break-word;
-            line-height: 1.4;
+            line-height: 1.5;
             flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         .info-panel i {
-            color: var(--primary);
-            margin-right: 6px;
+            color: var(--primary-light);
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .info-panel strong {
+            color: var(--text);
+            font-weight: 600;
         }
 
         /* 录制指示器 */
         .rec-indicator {
             position: absolute;
-            top: 16px;
-            right: 16px;
+            top: 20px;
+            right: 20px;
             display: none;
             align-items: center;
-            gap: 6px;
-            background: rgba(239, 68, 68, 0.8);
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            font-weight: 600;
+            gap: 8px;
+            background: linear-gradient(135deg, rgba(248, 113, 113, 0.9), rgba(248, 113, 113, 0.7));
+            padding: 8px 14px;
+            border-radius: 99px;
+            font-size: 0.85rem;
+            font-weight: 700;
             z-index: 10;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 16px rgba(248, 113, 113, 0.5);
+            animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
         }
 
         .rec-indicator.active {
@@ -231,16 +334,17 @@
         }
 
         .rec-dot {
-            width: 8px;
-            height: 8px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
             background: white;
             animation: blink 1s infinite;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
         }
 
         @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0; }
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.3; transform: scale(0.8); }
         }
 
         /* 竖屏时视频方向优化 */
@@ -316,6 +420,7 @@
 
     <script>
         const BACKEND_URL = '';
+        const AUDIO_DEVICE_STORAGE_KEY = 'cypher.audioInputDeviceId';
 
         let pc;
         let stream;
@@ -367,7 +472,39 @@
         }
         loadServerInfo();
 
+        async function loadPreferredAudioDeviceId() {
+            const localDeviceId = localStorage.getItem(AUDIO_DEVICE_STORAGE_KEY) || '';
+            if (localDeviceId) return localDeviceId;
+
+            try {
+                const response = await fetch(apiUrl('/api/detection/config'), { cache: 'no-store' });
+                if (!response.ok) return '';
+                const data = await response.json();
+                return data?.config?.audio?.inputDeviceId || '';
+            } catch (_) {
+                return '';
+            }
+        }
+
+        function defaultAudioConstraints() {
+            return {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            };
+        }
+
+        async function buildAudioConstraints() {
+            const deviceId = await loadPreferredAudioDeviceId();
+            const constraints = defaultAudioConstraints();
+            if (deviceId) {
+                constraints.deviceId = { exact: deviceId };
+            }
+            return constraints;
+        }
+
         async function startWebRTC() {
+            startBtn.classList.add('btn-loading');
             startBtn.disabled = true;
             infoText.textContent = '正在获取摄像头权限...';
 
@@ -381,17 +518,24 @@
                         width: { ideal: isMobile ? 1920 : 1280 },
                         height: { ideal: isMobile ? 1080 : 720 }
                     },
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
-                    }
+                    audio: await buildAudioConstraints()
                 };
 
-                stream = await navigator.mediaDevices.getUserMedia(constraints).catch((error) => {
+                stream = await navigator.mediaDevices.getUserMedia(constraints).catch(async (error) => {
+                    if (constraints.audio && constraints.audio.deviceId) {
+                        console.warn('指定麦克风获取失败，回退到系统默认麦克风:', error.message);
+                        try {
+                            return await navigator.mediaDevices.getUserMedia({
+                                video: constraints.video,
+                                audio: defaultAudioConstraints()
+                            });
+                        } catch (fallbackError) {
+                            console.warn('系统默认麦克风获取失败，回退为仅摄像头:', fallbackError.message);
+                        }
+                    }
                     console.warn('摄像头+麦克风获取失败，回退为仅摄像头:', error.message);
                     return navigator.mediaDevices.getUserMedia({
-                        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+                        video: constraints.video,
                         audio: false
                     });
                 });
@@ -410,8 +554,8 @@
 
                 const hasAudioTrack = stream.getAudioTracks().length > 0;
                 infoText.textContent = hasAudioTrack
-                    ? '摄像头和麦克风已获取，正在建立 WebRTC 连接...'
-                    : '摄像头已获取，未启用麦克风，正在建立 WebRTC 连接...';
+                    ? '✓ 摄像头和麦克风已获取，正在建立 WebRTC 连接...'
+                    : '✓ 摄像头已获取，未启用麦克风，正在建立 WebRTC 连接...';
                 pc = new PeerConnection({
                     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
                 });
@@ -441,18 +585,19 @@
 
                 statusBadge.classList.add('connected');
                 statusText.textContent = '已连接';
-                infoText.textContent = '视频流正在实时传输中';
+                infoText.innerHTML = '<strong>✓ 视频流正在实时传输中</strong>';
                 recIndicator.classList.add('active');
 
                 startBtn.innerHTML = '<i class="fa-solid fa-stop"></i> 停止推流';
-                startBtn.classList.remove('btn-primary');
+                startBtn.classList.remove('btn-primary', 'btn-loading');
                 startBtn.classList.add('btn-danger');
                 startBtn.onclick = stopWebRTC;
             } catch (e) {
                 console.error(e);
-                infoText.textContent = '连接失败: ' + e.message;
+                infoText.innerHTML = '<span style="color: var(--danger);">✗ 连接失败: ' + e.message + '</span>';
                 stopWebRTC(false);
             } finally {
+                startBtn.classList.remove('btn-loading');
                 startBtn.disabled = false;
             }
         }
@@ -489,4 +634,3 @@
     </script>
 </body>
 </html>
-

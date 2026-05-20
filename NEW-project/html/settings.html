@@ -5,32 +5,302 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CYPHER 检测配置</title>
   <style>
-    :root { --bg:#0b1120; --panel:#111827; --soft:#172033; --line:#2c3852; --text:#e5e7eb; --muted:#94a3b8; --accent:#38bdf8; --ok:#22c55e; --danger:#ef4444; }
+    :root { 
+      --bg: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1629 100%);
+      --panel: rgba(255, 255, 255, 0.08);
+      --soft: rgba(255, 255, 255, 0.05);
+      --line: rgba(255, 255, 255, 0.12);
+      --text: #ffffff;
+      --muted: rgba(255, 255, 255, 0.6);
+      --accent: #00d4ff;
+      --ok: #34d399;
+      --danger: #f87171;
+      --glass-blur: blur(20px);
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+      --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
     * { box-sizing: border-box; }
-    body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font-family:"Segoe UI","Microsoft YaHei",Arial,sans-serif; }
-    header { height:60px; display:flex; justify-content:space-between; align-items:center; padding:0 24px; background:rgba(15,23,42,.92); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:2; }
-    .brand { font-weight:700; } .brand span { color:var(--accent); }
-    nav { display:flex; gap:10px; flex-wrap:wrap; }
-    nav a, button { border:1px solid var(--line); background:var(--soft); color:var(--text); padding:8px 12px; border-radius:7px; text-decoration:none; cursor:pointer; font:inherit; }
-    nav a:hover, button:hover { border-color:var(--accent); }
-    main { display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:18px; padding:18px; }
-    .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:18px; }
-    h1,h2,h3 { margin:0; } h1 { font-size:22px; } h2 { font-size:18px; margin-bottom:14px; } h3 { font-size:15px; margin:14px 0 10px; }
-    .section { margin-top:18px; }
-    .grid { display:grid; gap:12px; } .grid.two { grid-template-columns:repeat(2,minmax(0,1fr)); } .grid.three { grid-template-columns:repeat(3,minmax(0,1fr)); }
-    label { display:grid; gap:6px; color:var(--muted); font-size:13px; }
-    input, select { width:100%; background:#0f172a; color:var(--text); border:1px solid var(--line); border-radius:7px; padding:9px 10px; outline:none; }
-    input:focus, select:focus { border-color:var(--accent); } input[type="checkbox"] { width:auto; }
-    .actions { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; flex-wrap:wrap; }
-    .primary { background:#0ea5e9; color:#00111d; border-color:#0ea5e9; font-weight:700; }
-    .danger { border-color:#7f1d1d; color:#fecaca; }
-    .status { min-height:22px; margin-top:12px; color:var(--muted); } .status.ok { color:var(--ok); } .status.error { color:var(--danger); }
-    .hint { color:var(--muted); font-size:13px; line-height:1.55; }
-    .list { display:grid; gap:10px; }
-    .item { border:1px solid var(--line); border-radius:7px; padding:10px; background:rgba(255,255,255,.02); display:grid; gap:8px; }
-    .item-row { display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap; }
-    .meta { color:var(--muted); font-size:12px; word-break:break-all; }
-    .badge { display:inline-flex; padding:2px 8px; border:1px solid var(--line); border-radius:999px; color:var(--muted); font-size:12px; }
+    body { 
+      margin:0; 
+      min-height:100vh; 
+      background:var(--bg);
+      background-attachment: fixed;
+      color:var(--text); 
+      font-family:-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI","Microsoft YaHei",Arial,sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    header { 
+      height:64px; 
+      display:flex; 
+      justify-content:space-between; 
+      align-items:center; 
+      padding:0 28px; 
+      background:rgba(255, 255, 255, 0.06);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border-bottom:1px solid var(--line); 
+      position:sticky; 
+      top:0; 
+      z-index:2;
+      box-shadow: var(--shadow-sm);
+    }
+    .brand { 
+      font-weight:700;
+      font-size: 18px;
+      letter-spacing: -0.5px;
+    } 
+    .brand span { 
+      color:var(--accent);
+      text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+    }
+    nav { display:flex; gap:12px; flex-wrap:wrap; }
+    nav a, button { 
+      border:1px solid var(--line); 
+      background:var(--soft);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color:var(--text); 
+      padding:10px 16px; 
+      border-radius:12px; 
+      text-decoration:none; 
+      cursor:pointer; 
+      font:inherit;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      font-weight: 500;
+    }
+    nav a:hover, button:hover { 
+      border-color:var(--accent);
+      background: rgba(0, 212, 255, 0.1);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+    }
+    main { 
+      display:grid; 
+      grid-template-columns:minmax(0,1fr) 400px; 
+      gap:20px; 
+      padding:24px; 
+    }
+    .panel { 
+      background:var(--panel);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border:1px solid var(--line); 
+      border-radius:16px; 
+      padding:24px;
+      box-shadow: var(--shadow-md);
+      transition: box-shadow 0.3s ease;
+    }
+    .panel:hover {
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+    h1,h2,h3 { margin:0; } 
+    h1 { 
+      font-size:24px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    } 
+    h2 { 
+      font-size:19px; 
+      margin-bottom:16px;
+      font-weight: 600;
+    } 
+    h3 { 
+      font-size:16px; 
+      margin:16px 0 12px;
+      font-weight: 600;
+    }
+    .section { margin-top:20px; }
+    .grid { display:grid; gap:14px; } 
+    .grid.two { grid-template-columns:repeat(2,minmax(0,1fr)); } 
+    .grid.three { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    label { 
+      display:grid; 
+      gap:8px; 
+      color:var(--muted); 
+      font-size:13px;
+      font-weight: 500;
+    }
+    input, select { 
+      width:100%; 
+      background:rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color:var(--text); 
+      border:1px solid var(--line); 
+      border-radius:10px; 
+      padding:10px 12px; 
+      outline:none;
+      transition: all 0.3s ease;
+    }
+    input:focus, select:focus { 
+      border-color:var(--accent);
+      box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+    }
+    select option {
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
+      color: var(--text);
+      padding: 10px 14px;
+      font-size: inherit;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    select option:last-child {
+      border-bottom: none;
+    } 
+    input[type="checkbox"] { 
+      width:auto;
+      accent-color: var(--accent);
+    }
+    .actions { 
+      display:flex; 
+      gap:12px; 
+      justify-content:flex-end; 
+      margin-top:20px; 
+      flex-wrap:wrap; 
+    }
+    .primary { 
+      background:linear-gradient(135deg, var(--accent) 0%, #0099cc 100%);
+      color:#00111d; 
+      border-color:var(--accent);
+      font-weight:700;
+      box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 212, 255, 0.5);
+    }
+    .danger { 
+      border-color:rgba(248, 113, 113, 0.5);
+      color:#fecaca;
+      background: rgba(248, 113, 113, 0.1);
+    }
+    .danger:hover {
+      background: rgba(248, 113, 113, 0.2);
+      box-shadow: 0 4px 12px rgba(248, 113, 113, 0.3);
+    }
+    .status { 
+      min-height:22px; 
+      margin-top:14px; 
+      color:var(--muted);
+      font-size: 14px;
+    } 
+    .status.ok { 
+      color:var(--ok);
+      text-shadow: 0 0 10px rgba(52, 211, 153, 0.5);
+    } 
+    .status.error { 
+      color:var(--danger);
+      text-shadow: 0 0 10px rgba(248, 113, 113, 0.5);
+    }
+    .hint { 
+      color:var(--muted); 
+      font-size:13px; 
+      line-height:1.65;
+      opacity: 0.9;
+    }
+    .field-group {
+      transition: all 0.3s ease;
+    }
+    .field-group.hidden {
+      display: none;
+    }
+    input.error, select.error {
+      border-color: var(--danger);
+      box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.1);
+    }
+    input.success, select.success {
+      border-color: var(--ok);
+      box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.1);
+    }
+    .validation-hint {
+      color: var(--danger);
+      font-size: 12px;
+      margin-top: 4px;
+      display: none;
+    }
+    .validation-hint.visible {
+      display: block;
+    }
+    .btn-loading {
+      position: relative;
+      pointer-events: none;
+      opacity: 0.7;
+    }
+    .btn-loading::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      top: 50%;
+      left: 50%;
+      margin-left: -8px;
+      margin-top: -8px;
+      border: 2px solid transparent;
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .list { display:grid; gap:12px; }
+    .item { 
+      border:1px solid var(--line); 
+      border-radius:12px; 
+      padding:14px; 
+      background:rgba(255,255,255,.04);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      display:grid; 
+      gap:10px;
+      transition: all 0.3s ease;
+    }
+    .item:hover {
+      border-color: rgba(0, 212, 255, 0.3);
+      box-shadow: var(--shadow-sm);
+    }
+    .item-row { 
+      display:flex; 
+      justify-content:space-between; 
+      gap:12px; 
+      align-items:center; 
+      flex-wrap:wrap; 
+    }
+    .meta { 
+      color:var(--muted); 
+      font-size:12px; 
+      word-break:break-all;
+    }
+    .badge { 
+      display:inline-flex; 
+      padding:4px 10px; 
+      border:1px solid var(--line); 
+      border-radius:999px; 
+      color:var(--muted); 
+      font-size:12px;
+      font-weight: 500;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+    }
+    .badge.active {
+      background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 212, 255, 0.1));
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+    }
+    .badge.connected {
+      background: rgba(52, 211, 153, 0.15);
+      border-color: var(--ok);
+      color: var(--ok);
+    }
+    .badge.disconnected {
+      background: rgba(248, 113, 113, 0.1);
+      border-color: rgba(248, 113, 113, 0.4);
+      color: #fca5a5;
+    }
     @media (max-width:1000px) { main { grid-template-columns:1fr; } .grid.two,.grid.three { grid-template-columns:1fr; } }
   </style>
 </head>
@@ -116,6 +386,11 @@
           <p class="hint">音频检测来自 WebRTC 推流页的麦克风音轨。RTSP 当前只做视频拉流，不解析 RTSP 音频。</p>
           <div class="grid three">
             <label style="align-content:end;"><span><input id="audio-enabled" type="checkbox"> 启用音频检测参数</span></label>
+            <label>麦克风设备
+              <select id="audio-device-select" disabled>
+                <option value="">正在加载麦克风设备...</option>
+              </select>
+            </label>
             <label>响声阈值 dBFS <input id="audio-loud-dbfs" type="number" min="-90" max="0" step="1" placeholder="-18"></label>
             <label>连续确认次数 <input id="audio-confirm-frames" type="number" min="1" max="20" step="1" placeholder="3"></label>
             <label>冷却秒数 <input id="audio-cooldown-seconds" type="number" min="0" max="3600" step="1" placeholder="8"></label>
@@ -135,7 +410,8 @@
         <p class="hint">支持 RTSP/IP/URL 摄像头源。配置保存到固定的 data/cameras.json；页面只调用 CYPHER 摄像头 API，不调用旧 Vigil 视频流或旧相机配置接口。</p>
         <form id="camera-form">
           <div class="grid three">
-            <label>名称 label <input id="camera-label" maxlength="80" placeholder="北门摄像头"></label>
+            <label>名称 label <input id="camera-label" maxlength="80" placeholder="北门摄像头" required></label>
+            <div class="validation-hint" id="label-hint">请输入摄像头名称（1-80字符）</div>
             <label>来源类型
               <select id="camera-source-type">
                 <option value="rtsp">RTSP URL</option>
@@ -143,7 +419,8 @@
                 <option value="url">URL</option>
               </select>
             </label>
-            <label>RTSP / URL <input id="camera-url" placeholder="rtsp://user:pass@192.168.1.10:554/stream"></label>
+            <label>RTSP / URL <input id="camera-url" placeholder="rtsp://user:pass@192.168.1.10:554/stream" required></label>
+            <div class="validation-hint" id="url-hint">请输入有效的 RTSP 地址（以 rtsp:// 开头）</div>
             <label>IP <input id="camera-ip" placeholder="192.168.1.10"></label>
             <label>端口 <input id="camera-port" type="number" min="1" max="65535" value="554"></label>
             <label>路径 <input id="camera-path" placeholder="stream1"></label>
@@ -156,6 +433,7 @@
             <button type="submit" class="primary" id="camera-save-btn">新增摄像头</button>
           </div>
           <div id="camera-status" class="status"></div>
+          <div id="duplicate-warning" class="status error" style="display:none;">⚠️ 检测到相同URL的摄像头已存在，是否继续添加？</div>
         </form>
       </div>
     </section>
@@ -177,7 +455,11 @@
   <script>
     const labels = ['helmet', 'vest', 'no-helmet', 'no-vest', 'fire', 'smoke'];
     const alertLabels = ['no-helmet', 'no-vest', 'fire', 'smoke'];
+    const audioDeviceStorageKey = 'cypher.audioInputDeviceId';
+    const audioDeviceLabelStorageKey = 'cypher.audioInputDeviceLabel';
     let editingCameraId = '';
+    let selectedAudioInputDeviceId = '';
+    let selectedAudioInputDeviceLabel = '';
 
     function setStatus(id, message, tone = '') {
       const el = document.getElementById(id);
@@ -212,6 +494,8 @@
       document.getElementById('audio-confirm-frames').value = config.audio?.confirmFrames ?? 3;
       document.getElementById('audio-cooldown-seconds').value = config.audio?.cooldownSeconds ?? 8;
       document.getElementById('audio-stale-ms').value = config.audio?.staleMs ?? 3000;
+      selectedAudioInputDeviceId = config.audio?.inputDeviceId || localStorage.getItem(audioDeviceStorageKey) || '';
+      selectedAudioInputDeviceLabel = config.audio?.inputDeviceLabel || localStorage.getItem(audioDeviceLabelStorageKey) || '';
       const profile = config.modelProfiles?.[config.modelProfile || 'default'];
       document.getElementById('profile-summary').textContent = profile ? `${profile.label} (${profile.env})` : '-';
     }
@@ -243,7 +527,9 @@
           loudDbfs: numberValue('audio-loud-dbfs'),
           confirmFrames: numberValue('audio-confirm-frames'),
           cooldownSeconds: numberValue('audio-cooldown-seconds'),
-          staleMs: numberValue('audio-stale-ms')
+          staleMs: numberValue('audio-stale-ms'),
+          inputDeviceId: selectedAudioInputDeviceId,
+          inputDeviceLabel: selectedAudioInputDeviceLabel
         }
       };
     }
@@ -290,22 +576,163 @@
       return 'rtsp://' + auth + ip + ':' + port + '/' + path;
     }
 
+    function validateCameraForm() {
+      let isValid = true;
+      
+      // Validate label
+      const label = document.getElementById('camera-label');
+      const labelHint = document.getElementById('label-hint');
+      if (!label.value.trim()) {
+        label.classList.add('error');
+        label.classList.remove('success');
+        labelHint.classList.add('visible');
+        isValid = false;
+      } else {
+        label.classList.remove('error');
+        label.classList.add('success');
+        labelHint.classList.remove('visible');
+      }
+      
+      // Validate URL based on source type
+      const mode = document.getElementById('camera-source-type').value;
+      const urlInput = document.getElementById('camera-url');
+      const urlHint = document.getElementById('url-hint');
+      
+      if (mode === 'ip') {
+        // For IP mode, validate IP fields
+        const ip = document.getElementById('camera-ip').value.trim();
+        if (!ip) {
+          document.getElementById('camera-ip').classList.add('error');
+          isValid = false;
+        } else {
+          document.getElementById('camera-ip').classList.remove('error');
+        }
+        urlInput.classList.remove('error', 'success');
+        urlHint.classList.remove('visible');
+      } else {
+        // For RTSP/URL mode, validate URL field
+        const url = urlInput.value.trim();
+        if (!url || !/^rtsp:\/\//i.test(url)) {
+          urlInput.classList.add('error');
+          urlInput.classList.remove('success');
+          urlHint.classList.add('visible');
+          isValid = false;
+        } else {
+          urlInput.classList.remove('error');
+          urlInput.classList.add('success');
+          urlHint.classList.remove('visible');
+        }
+        // Clear IP field errors
+        document.getElementById('camera-ip').classList.remove('error');
+      }
+      
+      return isValid;
+    }
+
+    function toggleIpFields() {
+      const mode = document.getElementById('camera-source-type').value;
+      const ipFields = ['camera-ip', 'camera-port', 'camera-path', 'camera-username', 'camera-password'];
+      
+      ipFields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        const label = field.closest('label');
+        if (mode === 'ip') {
+          label.classList.remove('hidden');
+          field.disabled = false;
+        } else {
+          label.classList.add('hidden');
+          field.disabled = true;
+          field.value = '';
+        }
+      });
+      
+      // Show/hide URL field hint
+      const urlLabel = document.getElementById('camera-url').closest('label');
+      if (mode === 'ip') {
+        urlLabel.querySelector('input').placeholder = '自动生成 RTSP URL';
+        document.getElementById('camera-url').disabled = true;
+      } else {
+        document.getElementById('camera-url').disabled = false;
+        document.getElementById('camera-url').placeholder = 'rtsp://user:pass@192.168.1.10:554/stream';
+      }
+    }
+
     function resetCameraForm() {
       editingCameraId = '';
       document.getElementById('camera-form').reset();
       document.getElementById('camera-port').value = '554';
       document.getElementById('camera-save-btn').textContent = '新增摄像头';
+      document.getElementById('duplicate-warning').style.display = 'none';
       setStatus('camera-status', '');
+      
+      // Clear validation states
+      ['camera-label', 'camera-url', 'camera-ip'].forEach(id => {
+        const field = document.getElementById(id);
+        field.classList.remove('error', 'success');
+      });
+      ['label-hint', 'url-hint'].forEach(id => {
+        document.getElementById(id).classList.remove('visible');
+      });
+      
+      toggleIpFields();
     }
 
     async function saveCamera(event) {
       event.preventDefault();
+      
+      // Validate form first
+      if (!validateCameraForm()) {
+        setStatus('camera-status', '请修正表单中的错误', 'error');
+        return;
+      }
+      
       const payload = {
         label: document.getElementById('camera-label').value.trim(),
         sourceType: document.getElementById('camera-source-type').value,
         url: buildCameraUrl(),
         autoStart: document.getElementById('camera-auto-start').checked
       };
+      
+      // Check for duplicate URLs (only when creating new camera)
+      if (!editingCameraId) {
+        try {
+          const response = await fetch('/api/cameras', { cache: 'no-store' });
+          const data = await response.json();
+          const existingCameras = data.cameras || [];
+          const isDuplicate = existingCameras.some(cam => cam.url === payload.url);
+          
+          if (isDuplicate) {
+            document.getElementById('duplicate-warning').style.display = 'block';
+            setStatus('camera-status', '', '');
+            // Wait for user confirmation
+            return new Promise((resolve) => {
+              const warningEl = document.getElementById('duplicate-warning');
+              const confirmBtn = document.createElement('button');
+              confirmBtn.type = 'button';
+              confirmBtn.className = 'primary';
+              confirmBtn.style.marginLeft = '10px';
+              confirmBtn.textContent = '确认添加';
+              confirmBtn.onclick = async () => {
+                warningEl.style.display = 'none';
+                await proceedSave(payload);
+                resolve();
+              };
+              warningEl.appendChild(confirmBtn);
+            });
+          }
+        } catch (err) {
+          console.warn('Failed to check duplicates:', err);
+        }
+      }
+      
+      await proceedSave(payload);
+    }
+    
+    async function proceedSave(payload) {
+      const saveBtn = document.getElementById('camera-save-btn');
+      saveBtn.classList.add('btn-loading');
+      saveBtn.disabled = true;
+      
       try {
         const endpoint = editingCameraId ? '/api/cameras/' + encodeURIComponent(editingCameraId) : '/api/cameras';
         const response = await fetch(endpoint, {
@@ -315,11 +742,14 @@
         });
         const data = await response.json();
         if (!response.ok || data.success === false) throw new Error(data.error || '保存失败');
-        setStatus('camera-status', editingCameraId ? '摄像头已更新' : '摄像头已新增', 'ok');
+        setStatus('camera-status', editingCameraId ? '✓ 摄像头已更新' : '✓ 摄像头已新增', 'ok');
         resetCameraForm();
         await loadCameras();
       } catch (error) {
-        setStatus('camera-status', '保存失败: ' + error.message, 'error');
+        setStatus('camera-status', '✗ 保存失败: ' + error.message, 'error');
+      } finally {
+        saveBtn.classList.remove('btn-loading');
+        saveBtn.disabled = false;
       }
     }
 
@@ -333,14 +763,29 @@
       if (action === 'delete') method = 'DELETE';
       const options = { method, headers: { 'Content-Type': 'application/json' } };
       if (action === 'active') options.body = JSON.stringify({ id });
-      if (action === 'delete' && !confirm('确认删除摄像头 ' + id + '？')) return;
+      if (action === 'delete' && !confirm('⚠️ 确认删除摄像头 ' + id + '？\n此操作不可恢复！')) return;
+      
+      // Find the button and add loading state
+      const buttons = document.querySelectorAll(`[data-camera-id="${id}"] button[data-action="${action}"]`);
+      buttons.forEach(btn => {
+        btn.classList.add('btn-loading');
+        btn.disabled = true;
+      });
+      
       try {
         const response = await fetch(endpoint, options);
         const data = await response.json().catch(() => ({}));
         if (!response.ok || data.success === false) throw new Error(data.error || '操作失败');
+        setStatus('camera-status', '✓ 操作成功', 'ok');
+        setTimeout(() => setStatus('camera-status', ''), 3000);
         await loadCameras();
       } catch (error) {
-        setStatus('camera-status', '操作失败: ' + error.message, 'error');
+        setStatus('camera-status', '✗ 操作失败: ' + error.message, 'error');
+      } finally {
+        buttons.forEach(btn => {
+          btn.classList.remove('btn-loading');
+          btn.disabled = false;
+        });
       }
     }
 
@@ -348,10 +793,35 @@
       editingCameraId = camera.id;
       document.getElementById('camera-label').value = camera.label || camera.id;
       document.getElementById('camera-source-type').value = camera.sourceType || 'rtsp';
-      document.getElementById('camera-url').value = camera.url || '';
+      
+      // Toggle IP fields based on source type
+      toggleIpFields();
+      
+      // Set URL field (password will be masked)
+      if (camera.sourceType === 'ip') {
+        // Parse RTSP URL to extract IP, port, path, credentials
+        try {
+          const urlObj = new URL(camera.url);
+          document.getElementById('camera-ip').value = urlObj.hostname;
+          document.getElementById('camera-port').value = urlObj.port || '554';
+          document.getElementById('camera-path').value = urlObj.pathname.replace(/^\//, '');
+          document.getElementById('camera-username').value = urlObj.username || '';
+          // Don't set password for security - user must re-enter
+          document.getElementById('camera-password').value = '';
+          document.getElementById('camera-url').value = camera.url;
+        } catch (e) {
+          document.getElementById('camera-url').value = camera.url || '';
+        }
+      } else {
+        document.getElementById('camera-url').value = camera.url || '';
+      }
+      
       document.getElementById('camera-auto-start').checked = false;
       document.getElementById('camera-save-btn').textContent = '保存摄像头';
-      setStatus('camera-status', '正在编辑 ' + camera.id);
+      setStatus('camera-status', '📝 正在编辑: ' + (camera.label || camera.id));
+      
+      // Scroll to form
+      document.getElementById('camera-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     async function loadCameras() {
@@ -365,23 +835,32 @@
           list.innerHTML = '<div class="item meta">暂无摄像头配置。可从左侧新增 RTSP/IP/URL 源。</div>';
           return;
         }
-        list.innerHTML = cameras.map(camera => `
+        list.innerHTML = cameras.map(camera => {
+          const isActive = camera.id === data.active;
+          const statusClass = isActive ? 'active' : (camera.status === 'connected' ? 'connected' : 'disconnected');
+          const statusIcon = isActive ? '🔵' : (camera.status === 'connected' ? '🟢' : (camera.error ? '🔴' : '⚪'));
+          
+          return `
           <div class="item" data-camera-id="${escapeHtml(camera.id)}">
-            <div class="item-row"><strong>${escapeHtml(camera.label || camera.id)}</strong><span class="badge">${escapeHtml(camera.status || '-')}</span></div>
+            <div class="item-row">
+              <strong>${escapeHtml(camera.label || camera.id)}</strong>
+              <span class="badge ${statusClass}">${statusIcon} ${escapeHtml(camera.status || '-')}${isActive ? ' (Active)' : ''}</span>
+            </div>
             <div class="meta">id: ${escapeHtml(camera.id)} | type: ${escapeHtml(camera.type || '-')} | source: ${escapeHtml(camera.sourceType || '-')}</div>
-            <div class="meta">frame: ${camera.hasFrame ? '有帧' : '无帧'} | count: ${Number(camera.frameCount || 0)}</div>
-            <div class="meta">audio: ${camera.hasAudio ? '有音频' : '无音频'} | ${escapeHtml(camera.audioStatus || 'idle')} | dBFS: ${camera.audioDbfs ?? '-'}</div>
+            <div class="meta">frame: ${camera.hasFrame ? '✓ 有帧' : '✗ 无帧'} | count: ${Number(camera.frameCount || 0)}</div>
+            <div class="meta">audio: ${camera.hasAudio ? '✓ 有音频' : '✗ 无音频'} | ${escapeHtml(camera.audioStatus || 'idle')} | dBFS: ${camera.audioDbfs ?? '-'}</div>
             <div class="meta">endpoint: /api/cameras/${encodeURIComponent(camera.id)}/frame</div>
-            ${camera.url ? `<div class="meta">url: ${escapeHtml(camera.url)}${camera.hasCredentials ? '（密码已遮蔽）' : ''}</div>` : ''}
-            ${camera.error ? `<div class="meta">error: ${escapeHtml(camera.error)}</div>` : ''}
-            <div class="actions" style="justify-content:flex-start;margin-top:4px;">
-              <button type="button" data-action="active">设为 active</button>
+            ${camera.url ? `<div class="meta">url: ${escapeHtml(camera.url)}${camera.hasCredentials ? ' 🔒（密码已遮蔽）' : ''}</div>` : ''}
+            ${camera.error ? `<div class="meta" style="color: var(--danger);">❌ error: ${escapeHtml(camera.error)}</div>` : ''}
+            <div class="actions" style="justify-content:flex-start;margin-top:8px;">
+              <button type="button" data-action="active" ${isActive ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>设为 active</button>
               <button type="button" data-action="start">启动测试</button>
               <button type="button" data-action="stop">停止</button>
               <button type="button" data-action="edit">编辑</button>
               <button type="button" class="danger" data-action="delete">删除</button>
             </div>
-          </div>`).join('');
+          </div>`;
+        }).join('');
         list.querySelectorAll('.item').forEach(item => {
           const id = item.dataset.cameraId;
           const camera = cameras.find(entry => entry.id === id);
@@ -415,16 +894,143 @@
         document.getElementById('skill-summary').textContent = '读取失败';
       }
     }
+document.getElementById('config-form').addEventListener('submit', saveConfig);
+document.getElementById('camera-form').addEventListener('submit', saveCamera);
+document.getElementById('camera-reset-btn').addEventListener('click', resetCameraForm);
+document.getElementById('camera-source-type').addEventListener('change', toggleIpFields);
 
-    document.getElementById('config-form').addEventListener('submit', saveConfig);
-    document.getElementById('reload-config-btn').addEventListener('click', loadConfig);
-    document.getElementById('camera-form').addEventListener('submit', saveCamera);
-    document.getElementById('camera-reset-btn').addEventListener('click', resetCameraForm);
+// Real-time validation
+document.getElementById('camera-label').addEventListener('input', function() {
+  const hint = document.getElementById('label-hint');
+  if (this.value.trim()) {
+    this.classList.remove('error');
+    this.classList.add('success');
+    hint.classList.remove('visible');
+  } else {
+    this.classList.remove('success');
+  }
+});
 
-    loadConfig();
-    loadCameras();
-    loadSkills();
-    setInterval(loadCameras, 10000);
-  </script>
+document.getElementById('camera-url').addEventListener('input', function() {
+  const hint = document.getElementById('url-hint');
+  const mode = document.getElementById('camera-source-type').value;
+  if (mode !== 'ip') {
+    if (/^rtsp:\/\//i.test(this.value.trim())) {
+      this.classList.remove('error');
+      this.classList.add('success');
+      hint.classList.remove('visible');
+    } else {
+      this.classList.remove('success');
+    }
+  }
+});
+
+document.getElementById('camera-ip').addEventListener('input', function() {
+  if (this.value.trim()) {
+    this.classList.remove('error');
+  }
+});
+
+async function enumerateBrowserAudioInputs() {
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== 'function') {
+    throw new Error('当前页面无法访问浏览器麦克风设备 API，请使用 HTTPS 或 localhost 打开页面');
+  }
+
+  let devices = await navigator.mediaDevices.enumerateDevices();
+  let audioInputs = devices.filter(device => device.kind === 'audioinput');
+  const needsPermission = audioInputs.length === 0 || audioInputs.some(device => !device.label);
+
+  if (needsPermission && typeof navigator.mediaDevices.getUserMedia === 'function') {
+    const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    permissionStream.getTracks().forEach(track => track.stop());
+    devices = await navigator.mediaDevices.enumerateDevices();
+    audioInputs = devices.filter(device => device.kind === 'audioinput');
+  }
+
+  return audioInputs;
+}
+
+async function loadBackendAudioDevices() {
+  const response = await fetch('/api/skills/audio-detector/devices', { cache: 'no-store' });
+  if (!response.ok) throw new Error('后端音频设备 API 返回 ' + response.status);
+  const data = await response.json();
+  const devices = (data.devices || []).map(device => ({
+    id: String(device.id),
+    label: device.name || `麦克风 ${device.id}`
+  }));
+  if (devices.length === 0 && data.current_device_name) {
+    devices.push({
+      id: data.current_device_id == null ? '' : String(data.current_device_id),
+      label: `${data.current_device_name}（已保存）`
+    });
+  }
+  return devices;
+}
+
+async function loadAudioDevices() {
+  const select = document.getElementById('audio-device-select');
+  select.disabled = true;
+  select.innerHTML = '<option value="">正在读取麦克风设备...</option>';
+
+  try {
+    let source = 'browser';
+    let audioInputs = [];
+    try {
+      audioInputs = await enumerateBrowserAudioInputs();
+    } catch (browserError) {
+      console.warn('浏览器麦克风枚举失败，尝试后端枚举:', browserError.message);
+      source = 'backend';
+      audioInputs = await loadBackendAudioDevices();
+    }
+
+    const savedId = selectedAudioInputDeviceId || localStorage.getItem(audioDeviceStorageKey) || '';
+    const options = [{ id: '', label: '系统默认麦克风' }, ...audioInputs.map((device, index) => ({
+      id: String(device.deviceId || device.id || ''),
+      label: device.label || `麦克风 ${index + 1}`
+    }))];
+
+    select.innerHTML = options.map(option => (
+      `<option value="${escapeHtml(option.id)}" ${savedId === option.id ? 'selected' : ''}>${escapeHtml(option.label)}</option>`
+    )).join('');
+    select.dataset.source = source;
+    select.disabled = false;
+
+    const selectedOption = select.options[select.selectedIndex];
+    selectedAudioInputDeviceId = select.value;
+    selectedAudioInputDeviceLabel = selectedOption ? selectedOption.text : '';
+  } catch (e) {
+    const savedLabel = selectedAudioInputDeviceLabel || localStorage.getItem(audioDeviceLabelStorageKey);
+    if (savedLabel) {
+      select.innerHTML = `<option value="${escapeHtml(selectedAudioInputDeviceId)}">${escapeHtml(savedLabel)}（已保存）</option>`;
+      select.disabled = false;
+    } else {
+      select.innerHTML = `<option value="">获取设备失败：${escapeHtml(e.message)}</option>`;
+      select.disabled = true;
+    }
+  }
+}
+
+document.getElementById('audio-device-select').addEventListener('change', (e) => {
+  const option = e.target.options[e.target.selectedIndex];
+  selectedAudioInputDeviceId = e.target.value || '';
+  selectedAudioInputDeviceLabel = option ? option.text : '';
+  localStorage.setItem(audioDeviceStorageKey, selectedAudioInputDeviceId);
+  localStorage.setItem(audioDeviceLabelStorageKey, selectedAudioInputDeviceLabel);
+  setStatus('config-status', '麦克风设备已选择，点击“保存检测配置”后 WebRTC 推流页会使用该设备', 'ok');
+});
+
+async function initSettingsPage() {
+  await Promise.all([loadConfig(), loadCameras(), loadSkills()]);
+  await loadAudioDevices();
+  setInterval(loadCameras, 10000);
+}
+
+document.getElementById('reload-config-btn').addEventListener('click', async () => {
+  await loadConfig();
+  await loadAudioDevices();
+});
+
+initSettingsPage();
+</script>
 </body>
 </html>

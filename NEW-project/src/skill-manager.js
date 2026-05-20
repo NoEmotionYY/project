@@ -194,6 +194,7 @@ function getAvailableSkills() {
 
   const exclude = ['__tests__', MANAGER_FILE, 'skills-state.json'];
   const skills = [];
+  const seenSkillIds = new Set();
 
   // 扫描 JS 技能
   for (const file of files) {
@@ -213,6 +214,7 @@ function getAvailableSkills() {
         type: 'js',
         enabled: isEnabled(meta.id),
       });
+      seenSkillIds.add(meta.id);
     } catch (e) {
       console.error(`[技能] 扫描 ${file} 失败:`, e.message);
     }
@@ -226,6 +228,7 @@ function getAvailableSkills() {
       const skillPath = resolveInside(SKILLS_DIR, file);
       const meta = parsePythonMeta(skillPath);
       const name = meta.name || path.basename(file, '.py');
+      if (seenSkillIds.has(name)) continue;
 
       skills.push({
         id: name,
@@ -262,7 +265,8 @@ function createPersistentAnalyzer(skillPath, name) {
         ...process.env,
         QWEN_API_KEY: process.env.QWEN_API_KEY || '',
         DASHSCOPE_API_KEY: process.env.DASHSCOPE_API_KEY || '',
-        PYTHONUNBUFFERED: '1'
+        PYTHONUNBUFFERED: '1',
+        PYTHONIOENCODING: 'utf-8'
       }
     });
 
@@ -283,6 +287,15 @@ function createPersistentAnalyzer(skillPath, name) {
             }
             continue;
           }
+          // Handle audio events - broadcast to SSE clients
+          if (response.event) {
+            console.log(`[持久进程:${name}] 广播事件:`, response.event.type);
+            // Import broadcastSSE from server context
+            if (typeof global.broadcastAudioEvent === 'function') {
+              global.broadcastAudioEvent(response.event);
+            }
+            continue;
+          }
           if (pending) {
             clearTimeout(pending.timer);
             const cb = pending;
@@ -300,7 +313,10 @@ function createPersistentAnalyzer(skillPath, name) {
     });
 
     proc.stderr.on('data', (data) => {
-      console.error(`[持久进程:${name}] stderr:`, data.toString().trim());
+      const text = data.toString('utf-8').trim();
+      if (text) {
+        console.error(`[持久进程:${name}] stderr:`, text);
+      }
     });
 
     proc.on('error', (err) => {
@@ -350,11 +366,29 @@ function createPersistentAnalyzer(skillPath, name) {
     // 如果已标记为失败，直接快速返回错误，不阻塞分析循环
     const processEntry = persistentProcesses.get(name);
     if (processEntry && processEntry.failed) {
-      throw new Error(`[${name}] 技能加载失败，已跳过: ${processEntry.failReason}`);
+      const errorMsg = `[${name}] 技能加载失败，已跳过: ${processEntry.failReason}`;
+      console.error(`[持久进程:${name}] ${errorMsg}`);
+      throw new Error(errorMsg);
     }
 
-    // 等待进程就绪
-    await waitForReady();
+    // 等待进程就绪（带超时）
+    try {
+      await Promise.race([
+        waitForReady(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error(`[${name}] 进程启动超时 (10秒)`)), 10000)
+        )
+      ]);
+    } catch (err) {
+      const errorMsg = `[${name}] 进程启动失败: ${err.message}`;
+      console.error(`[持久进程:${name}] ${errorMsg}`);
+      if (processEntry) {
+        processEntry.failed = true;
+        processEntry.failReason = err.message;
+        failedSkills.set(name, err.message);
+      }
+      throw new Error(errorMsg);
+    }
 
     return new Promise((resolve, reject) => {
       if (!proc || proc.killed || (processEntry && processEntry.disposed)) {
@@ -470,6 +504,10 @@ function loadSkillModule(info) {
         return new Promise((resolve, reject) => {
           const python = spawn(PYTHON_PATH, [skillPath], {
             stdio: ['pipe', 'pipe', 'pipe'],
+            env: {
+              ...process.env,
+              PYTHONIOENCODING: 'utf-8'
+            }
           });
 
           let stdout = '';
@@ -482,8 +520,8 @@ function loadSkillModule(info) {
             reject(new Error(`Python 技能 ${name} 执行超时（30秒）`));
           }, 30000);
 
-          python.stdout.on('data', (data) => { stdout += data.toString(); });
-          python.stderr.on('data', (data) => { stderr += data.toString(); });
+          python.stdout.on('data', (data) => { stdout += data.toString('utf-8'); });
+          python.stderr.on('data', (data) => { stderr += data.toString('utf-8'); });
 
           python.on('close', (code) => {
             clearTimeout(timer);
@@ -549,6 +587,60 @@ function ensureEnabledSkillsLoaded() {
       loadedSkills.delete(id);
     }
   }
+}
+
+function findPersistentPythonSkillInfo(skillId) {
+  if (!fs.existsSync(SKILLS_DIR)) return null;
+  let files;
+  try {
+    files = fs.readdirSync(SKILLS_DIR);
+  } catch (_) {
+    return null;
+  }
+
+  for (const file of files) {
+    if (!file.endsWith('.py') || file.startsWith('.') || safeName(file, '') !== file) continue;
+    try {
+      const skillPath = resolveInside(SKILLS_DIR, file);
+      const meta = parsePythonMeta(skillPath);
+      const name = meta.name || path.basename(file, '.py');
+      if (name === skillId && meta.persistent) {
+        return {
+          id: name,
+          label: meta.label || name,
+          description: meta.description || '',
+          file,
+          type: 'python',
+          enabled: isEnabled(name),
+        };
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+function ensurePersistentActionProcess(skillId) {
+  const existing = persistentProcesses.get(skillId);
+  if (existing) return existing;
+
+  const info = findPersistentPythonSkillInfo(skillId);
+  if (!info) return null;
+
+  const skillPath = resolveInside(SKILLS_DIR, info.file);
+  const procInfo = createPersistentAnalyzer(skillPath, skillId);
+  const entry = { procInfo, disposed: false };
+  persistentProcesses.set(skillId, entry);
+  return entry;
+}
+
+async function executeSkillAction(skillId, action, payload = {}) {
+  ensureEnabledSkillsLoaded();
+  const pEntry = ensurePersistentActionProcess(skillId);
+  if (!pEntry || !pEntry.procInfo || pEntry.failed) {
+    throw new Error(`Skill ${skillId} is not running or not persistent.`);
+  }
+  // Pass action and payload directly as context, with empty image
+  return await pEntry.procInfo.analyze('', { action, ...payload });
 }
 
 // ==========================================
@@ -845,6 +937,7 @@ process.on('SIGINT', () => { shutdownPersistent(); process.exit(); });
 process.on('SIGTERM', () => { shutdownPersistent(); process.exit(); });
 
 module.exports = {
+  executeSkillAction,
   getAvailableSkills,
   getSkillsStatus,
   toggleSkill,

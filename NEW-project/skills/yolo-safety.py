@@ -865,30 +865,58 @@ def analyze_request(request):
     if isinstance(request.get("config"), dict):
         config_overrides.update(request.get("config"))
     config = build_config(config_overrides)
+    
+    log(f"Analyzing frame for camera {camera_id}, profile={config['modelProfile']}")
+    
     image = decode_image_payload(request)
-
-    try:
-        model, model_path = get_model(config["modelProfile"])
-    except Exception as exc:
-        return build_error_result(exc, camera_id, timestamp_ms)
-
+    
+    # 支持双模型同时推理：同时加载 PPE 和 Fire 模型
+    ppe_model, ppe_path = get_model("ppe")
+    fire_model, fire_path = get_model("fire")
+    log(f"Models loaded: PPE={ppe_path}, Fire={fire_path}")
+    
     predict_kwargs = build_predict_kwargs(config)
+    
+    all_results = []
+    # PPE 模型推理（安全帽、反光衣）
     try:
-        results = model.predict(image, **predict_kwargs)
+        ppe_results = ppe_model.predict(image, **predict_kwargs)
+        all_results.append((ppe_results, ppe_model))
     except TypeError:
-        # 兼容旧版 ultralytics 或自定义模型封装：逐步降级掉高级推理参数。
         fallback_kwargs = {"verbose": False, "conf": predict_kwargs["conf"]}
-        results = model.predict(image, **fallback_kwargs)
+        ppe_results = ppe_model.predict(image, **fallback_kwargs)
+        all_results.append((ppe_results, ppe_model))
     except AttributeError:
-        results = model(image, verbose=False)
-
-    detections = extract_detections(results, model, config)
+        ppe_results = ppe_model(image, verbose=False)
+        all_results.append((ppe_results, ppe_model))
+    except Exception as e:
+        log(f"PPE model inference failed: {e}")
+    
+    # Fire 模型推理（火灾、烟雾）
+    try:
+        fire_results = fire_model.predict(image, **predict_kwargs)
+        all_results.append((fire_results, fire_model))
+    except TypeError:
+        fallback_kwargs = {"verbose": False, "conf": predict_kwargs["conf"]}
+        fire_results = fire_model.predict(image, **fallback_kwargs)
+        all_results.append((fire_results, fire_model))
+    except AttributeError:
+        fire_results = fire_model(image, verbose=False)
+        all_results.append((fire_results, fire_model))
+    except Exception as e:
+        log(f"Fire model inference failed: {e}")
+    
+    # 合并所有模型的检测结果
+    detections = []
+    for results, model in all_results:
+        detections.extend(extract_detections(results, model, config))
+    
     alerts = GOVERNANCE.observe(camera_id, detections, time.time(), config)
     mark_qwen_review(alerts, config)
 
     meta = {
-        "model": project_relative(model_path) if model_path != "yolov8n.pt" else "yolov8n.pt",
-        "modelProfile": config["modelProfile"],
+        "model": f"PPE:{project_relative(ppe_path)} + Fire:{project_relative(fire_path)}",
+        "modelProfile": "multi",
         "latencyMs": int((time.time() - start) * 1000),
         "qwenReviewed": False,
         "qwenReviewEnabled": bool(config.get("qwenReview")),
@@ -950,20 +978,42 @@ def handle_line(line):
 
 
 def main():
-    print(json.dumps({"status": "ready"}), flush=True)
-    while True:
-        line = sys.stdin.readline()
-        if not line:
-            break
-        line = line.strip()
-        if not line:
-            continue
-        result = handle_line(line)
-        if result == "shutdown":
-            break
-        if result is None:
-            continue
-        print(json.dumps({"result": result}, ensure_ascii=False), flush=True)
+    try:
+        # 强制 Windows 控制台使用 UTF-8 编码
+        if sys.platform == 'win32':
+            os.environ['PYTHONIOENCODING'] = 'utf-8'
+            
+        log("YOLO safety skill starting...")
+        print(json.dumps({"status": "ready"}), flush=True)
+        log("YOLO safety skill ready, waiting for requests...")
+        
+        while True:
+            line = sys.stdin.readline()
+            if not line:
+                log("stdin closed, exiting")
+                break
+            line = line.strip()
+            if not line:
+                continue
+            result = handle_line(line)
+            if result == "shutdown":
+                log("shutdown requested")
+                break
+            if result is None:
+                continue
+            output = json.dumps({"result": result}, ensure_ascii=False)
+            # 所有平台统一使用UTF-8字节输出，避免Windows系统编码导致乱码
+            sys.stdout.buffer.write(output.encode('utf-8'))
+            sys.stdout.buffer.write(b'\n')
+            sys.stdout.buffer.flush()
+    except Exception as e:
+        log(f"Fatal error in main loop: {e}")
+        traceback.print_exc(file=sys.stderr)
+        # 输出错误信息到 stdout，让 Node.js 能捕获
+        error_output = json.dumps({"error": f"YOLO skill fatal error: {str(e)}"}, ensure_ascii=False)
+        sys.stdout.buffer.write(error_output.encode('utf-8'))
+        sys.stdout.buffer.write(b'\n')
+        sys.stdout.buffer.flush()
 
 
 if __name__ == "__main__":

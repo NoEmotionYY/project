@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+import sys
+import os
+
+# 强制 Windows 控制台使用 UTF-8 编码
+if sys.platform == 'win32':
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+
 import json
 import sqlite3
-import sys
 from pathlib import Path
 
 
@@ -34,7 +41,12 @@ DETAIL_COLUMNS = LIST_COLUMNS + ["raw_json"]
 
 
 def emit(payload):
-    print(json.dumps(payload, ensure_ascii=False), flush=True)
+    # 强制UTF-8编码输出，避免Windows系统编码导致乱码
+    output = json.dumps(payload, ensure_ascii=False)
+    # 所有平台统一使用UTF-8字节输出
+    sys.stdout.buffer.write(output.encode('utf-8'))
+    sys.stdout.buffer.write(b'\n')
+    sys.stdout.buffer.flush()
 
 
 def row_to_dict(row, columns):
@@ -102,7 +114,10 @@ def build_where(query):
 def connect_readonly():
     if not DB_PATH.exists():
         return None
-    return sqlite3.connect(f"{DB_PATH.resolve().as_uri()}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"{DB_PATH.resolve().as_uri()}?mode=ro", uri=True)
+    # 确保返回的文本是UTF-8编码
+    conn.text_factory = str
+    return conn
 
 
 def list_alerts(query):

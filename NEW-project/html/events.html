@@ -6,111 +6,280 @@
   <title>CYPHER 事件中心</title>
   <style>
     :root {
-      --bg: #0b1120;
-      --panel: #111827;
-      --panel-soft: #172033;
-      --line: #2c3852;
-      --text: #e5e7eb;
-      --muted: #94a3b8;
-      --accent: #38bdf8;
-      --warn: #f59e0b;
-      --danger: #ef4444;
-      --ok: #22c55e;
+      --bg: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1629 100%);
+      --panel: rgba(255, 255, 255, 0.08);
+      --panel-soft: rgba(255, 255, 255, 0.05);
+      --line: rgba(255, 255, 255, 0.12);
+      --text: #ffffff;
+      --muted: rgba(255, 255, 255, 0.6);
+      --accent: #00d4ff;
+      --warn: #fbbf24;
+      --danger: #f87171;
+      --ok: #34d399;
+      --glass-blur: blur(20px);
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+      --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+      --glow-accent: 0 0 20px rgba(0, 212, 255, 0.4);
+      --glow-ok: 0 0 20px rgba(52, 211, 153, 0.4);
+      --glow-warn: 0 0 20px rgba(251, 191, 36, 0.4);
+      --glow-danger: 0 0 20px rgba(248, 113, 113, 0.4);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
       background: var(--bg);
+      background-attachment: fixed;
       color: var(--text);
-      font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
     }
     header {
-      height: 60px;
+      height: 64px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 24px;
+      padding: 0 28px;
       border-bottom: 1px solid var(--line);
-      background: rgba(15, 23, 42, 0.92);
+      background: rgba(255, 255, 255, 0.06);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
       position: sticky;
       top: 0;
       z-index: 3;
+      box-shadow: var(--shadow-sm);
     }
-    .brand { display: flex; align-items: center; gap: 14px; font-weight: 700; }
-    .brand span { color: var(--accent); }
-    nav { display: flex; gap: 10px; flex-wrap: wrap; }
+    .brand { 
+      display: flex; 
+      align-items: center; 
+      gap: 14px; 
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: -0.5px;
+    }
+    .brand::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+      box-shadow: var(--glow-accent);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.7; transform: scale(1.1); }
+    }
+    .brand span { 
+      color: var(--accent);
+      text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+    }
+    nav { display: flex; gap: 12px; flex-wrap: wrap; }
     nav a, button {
       border: 1px solid var(--line);
       background: var(--panel-soft);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       color: var(--text);
-      padding: 8px 12px;
-      border-radius: 7px;
+      padding: 10px 16px;
+      border-radius: 12px;
       text-decoration: none;
       cursor: pointer;
       font: inherit;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      font-weight: 500;
     }
-    nav a:hover, button:hover { border-color: var(--accent); }
+    nav a:hover, button:hover { 
+      border-color: var(--accent);
+      background: rgba(0, 212, 255, 0.1);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+    }
     main {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 360px;
-      gap: 18px;
-      padding: 18px;
+      grid-template-columns: minmax(0, 1fr) 380px;
+      gap: 20px;
+      padding: 24px;
     }
     .panel {
       background: var(--panel);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 16px;
       overflow: hidden;
+      box-shadow: var(--shadow-md);
+      transition: box-shadow 0.3s ease;
+    }
+    .panel:hover {
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     }
     .toolbar {
       display: grid;
       grid-template-columns: repeat(5, minmax(120px, 1fr)) auto;
-      gap: 10px;
-      padding: 14px;
+      gap: 12px;
+      padding: 16px;
       border-bottom: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.02);
+      background: rgba(255, 255, 255, 0.03);
     }
     input, select {
       width: 100%;
-      background: #0f172a;
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       color: var(--text);
       border: 1px solid var(--line);
-      border-radius: 7px;
-      padding: 8px 10px;
+      border-radius: 10px;
+      padding: 10px 12px;
       outline: none;
+      transition: all 0.3s ease;
     }
-    input:focus, select:focus { border-color: var(--accent); }
+    select {
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath fill='%23ffffff' fill-opacity='0.5' d='M7 10.5L2.1 5.6l.9-.9L7 8.7 11 4.7l.9.9z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      cursor: pointer;
+      padding: 10px 36px 10px 14px;
+    }
+    select:focus { 
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.15);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath fill='%2300d4ff' d='M7 10.5L2.1 5.6l.9-.9L7 8.7 11 4.7l.9.9z'/%3E%3C/svg%3E");
+    }
+    select option {
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
+      color: var(--text);
+      padding: 10px 14px;
+      font-size: inherit;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    select option:last-child {
+      border-bottom: none;
+    }
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 12px 14px; border-bottom: 1px solid rgba(44, 56, 82, 0.7); text-align: left; }
-    th { color: var(--muted); font-size: 12px; font-weight: 600; }
-    tbody tr { cursor: pointer; }
-    tbody tr:hover, tbody tr.active { background: rgba(56, 189, 248, 0.08); }
-    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 99px; font-size: 12px; border: 1px solid var(--line); }
-    .critical { color: var(--danger); border-color: rgba(239, 68, 68, 0.45); }
-    .warning { color: var(--warn); border-color: rgba(245, 158, 11, 0.45); }
-    .info { color: var(--accent); border-color: rgba(56, 189, 248, 0.45); }
-    .footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; color: var(--muted); }
-    .pager { display: flex; gap: 8px; }
-    aside.panel { align-self: start; position: sticky; top: 78px; }
-    .detail { padding: 16px; display: grid; gap: 14px; }
+    th, td { 
+      padding: 14px 16px; 
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08); 
+      text-align: left; 
+    }
+    th { 
+      color: var(--muted); 
+      font-size: 12px; 
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    tbody tr { 
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    tbody tr:hover, tbody tr.active { 
+      background: rgba(0, 212, 255, 0.08);
+    }
+    .pill { 
+      display: inline-flex; 
+      align-items: center; 
+      gap: 6px; 
+      padding: 4px 10px; 
+      border-radius: 99px; 
+      font-size: 12px; 
+      border: 1px solid var(--line);
+      font-weight: 600;
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+    }
+    .critical { 
+      color: var(--danger); 
+      border-color: rgba(248, 113, 113, 0.45);
+      background: rgba(248, 113, 113, 0.12);
+    }
+    .warning { 
+      color: var(--warn); 
+      border-color: rgba(251, 191, 36, 0.45);
+      background: rgba(251, 191, 36, 0.12);
+    }
+    .info { 
+      color: var(--accent); 
+      border-color: rgba(0, 212, 255, 0.45);
+      background: rgba(0, 212, 255, 0.1);
+    }
+    .footer { 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center; 
+      gap: 12px; 
+      padding: 14px 16px; 
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .pager { display: flex; gap: 10px; }
+    aside.panel { 
+      align-self: start; 
+      position: sticky; 
+      top: 82px;
+    }
+    .detail { 
+      padding: 20px; 
+      display: grid; 
+      gap: 16px;
+    }
     .snapshot {
       aspect-ratio: 16 / 9;
       border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #020617;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       display: flex;
       align-items: center;
       justify-content: center;
       color: var(--muted);
       overflow: hidden;
     }
-    .snapshot img { width: 100%; height: 100%; object-fit: contain; background: #020617; }
-    .kv { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; font-size: 14px; }
-    .kv .k { color: var(--muted); }
-    .empty { padding: 48px 16px; text-align: center; color: var(--muted); }
-    details { color: var(--muted); }
-    pre { white-space: pre-wrap; word-break: break-word; color: var(--text); background: #0f172a; padding: 10px; border-radius: 7px; max-height: 220px; overflow: auto; }
+    .snapshot img { 
+      width: 100%; 
+      height: 100%; 
+      object-fit: contain; 
+      background: rgba(0, 0, 0, 0.3);
+    }
+    .kv { 
+      display: grid; 
+      grid-template-columns: 110px minmax(0, 1fr); 
+      gap: 10px; 
+      font-size: 14px;
+    }
+    .kv .k { 
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .empty { 
+      padding: 56px 16px; 
+      text-align: center; 
+      color: var(--muted);
+      font-size: 14px;
+    }
+    details { 
+      color: var(--muted);
+      cursor: pointer;
+    }
+    pre { 
+      white-space: pre-wrap; 
+      word-break: break-word; 
+      color: var(--text); 
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      padding: 12px; 
+      border-radius: 10px; 
+      max-height: 240px; 
+      overflow: auto;
+      border: 1px solid var(--line);
+    }
     @media (max-width: 980px) {
       main { grid-template-columns: 1fr; }
       aside.panel { position: static; }
@@ -145,6 +314,9 @@
           <option value="smoke">烟雾</option>
           <option value="ppe">PPE</option>
           <option value="hazard">风险</option>
+          <option value="high-volume">高分贝告警</option>
+          <option value="explosion">爆炸声音告警</option>
+          <option value="audio">音频检测</option>
         </select>
         <input id="camera-filter" placeholder="摄像头 ID">
         <input id="keyword-filter" placeholder="搜索标题/模型/技能">
@@ -258,27 +430,138 @@
     async function loadEvents() {
       statusEl.textContent = '加载事件中...';
       rowsEl.innerHTML = '';
+      selectedId = null;
+      items = [];
+      total = 0;
+      
+      const category = document.getElementById('category-filter').value;
+      
+      // 如果选择"全部类别"，启用混合模式：从各类别各取最近10条，合并后按时间排序
+      if (!category) {
+        try {
+          // 获取各类别最近的警报
+          const categories = ['ppe', 'high-volume', 'explosion', 'fire', 'smoke'];
+          const promises = categories.map(cat => 
+            fetch(`/api/alerts?page=1&limit=10&sort=desc&category=${cat}`, { cache: 'no-store' })
+              .then(r => r.json())
+              .then(data => data.items || [])
+              .catch(() => [])
+          );
+          
+          const allItems = await Promise.all(promises);
+          items = allItems.flat();
+          
+          // 过滤无效或不完整数据 - 必须有足够的有效字段才能显示
+          items = items.filter(item => {
+            if (!item || !item.id) return false;
+            // 必须有时间戳
+            if (!item.created_at) return false;
+            // 必须有摄像头信息（非空字符串）
+            const hasCamera = (item.camera_id && item.camera_id.trim()) || (item.camera_label && item.camera_label.trim());
+            if (!hasCamera) return false;
+            // 必须有类别信息（非空字符串）
+            const hasCategory = (item.category && item.category.trim()) || (item.category_cn && item.category_cn.trim()) || 
+                               (item.alert_type && item.alert_type.trim()) || (item.title && item.title.trim());
+            if (!hasCategory) return false;
+            return true;
+          });
+          
+          // 按时间倒序排序
+          items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+          
+          // 去重（同一时间可能有重复）
+          const seen = new Set();
+          items = items.filter(item => {
+            if (seen.has(item.id)) return false;
+            seen.add(item.id);
+            return true;
+          });
+          
+          total = items.length;
+          // 立即渲染，不经过二次过滤
+          renderRowsDirect(items, total);
+          
+          // 显示提示
+          statusEl.textContent = `混合模式：显示 ${categories.join('、')} 的最近警报，共 ${total} 条`;
+        } catch (error) {
+          rowsEl.innerHTML = `<tr><td colspan="6" class="empty">事件读取失败：${escapeHtml(error.message)}</td></tr>`;
+          statusEl.textContent = '读取失败';
+        }
+        return;
+      }
+      
+      // 常规模式：按筛选条件加载
       try {
         const response = await fetch(`/api/alerts?${apiQuery()}`, { cache: 'no-store' });
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
-        items = data.items || [];
-        total = data.total || 0;
-        renderRows();
+        
+        // 过滤无效或不完整数据 - 必须有足够的有效字段才能显示
+        let rawItems = data.items || [];
+        
+        // 调试：打印原始数据数量
+        console.log('[事件中心] 原始数据:', rawItems.length, '条');
+        if (rawItems.length > 0) {
+          console.log('[事件中心] 第一条数据:', rawItems[0]);
+          console.log('[事件中心] 最后一条数据:', rawItems[rawItems.length - 1]);
+        }
+        
+        let filteredItems = rawItems.filter(item => {
+          if (!item || !item.id) return false;
+          // 必须有时间戳
+          if (!item.created_at) return false;
+          // 必须有摄像头信息（非空字符串）
+          const hasCamera = (item.camera_id && item.camera_id.trim()) || (item.camera_label && item.camera_label.trim());
+          if (!hasCamera) return false;
+          // 必须有类别信息（非空字符串）
+          const hasCategory = (item.category && item.category.trim()) || (item.category_cn && item.category_cn.trim()) || 
+                             (item.alert_type && item.alert_type.trim()) || (item.title && item.title.trim());
+          if (!hasCategory) return false;
+          return true;
+        });
+        
+        // 调试：打印过滤后的数据数量
+        console.log('[事件中心] 过滤后数据:', filteredItems.length, '条');
+        if (filteredItems.length !== rawItems.length) {
+          console.log('[事件中心] 过滤掉了', rawItems.length - filteredItems.length, '条无效数据');
+          // 打印被过滤掉的数据样例
+          const removedItems = rawItems.filter(item => !filteredItems.includes(item));
+          if (removedItems.length > 0) {
+            console.log('[事件中心] 被过滤的第一条:', removedItems[0]);
+          }
+        }
+        
+        // 更新为过滤后的数据
+        items = filteredItems;
+        total = filteredItems.length;
+        
+        // 立即渲染，不经过二次过滤
+        renderRowsDirect(filteredItems, filteredItems.length);
       } catch (error) {
         rowsEl.innerHTML = `<tr><td colspan="6" class="empty">事件读取失败：${escapeHtml(error.message)}</td></tr>`;
         statusEl.textContent = '读取失败';
       }
     }
 
-    function renderRows() {
-      if (!items.length) {
+    function renderRowsDirect(validItems, totalCount) {
+      // 调试：打印渲染数据
+      console.log('[事件中心] 开始渲染，数据量:', validItems ? validItems.length : 0);
+      if (validItems && validItems.length > 0) {
+        console.log('[事件中心] 第一条:', validItems[0]);
+        console.log('[事件中心] 最后一条:', validItems[validItems.length - 1]);
+      }
+      
+      // 完全清空表格
+      rowsEl.innerHTML = '';
+      
+      if (!validItems || !validItems.length) {
         rowsEl.innerHTML = '<tr><td colspan="6" class="empty">暂无事件。数据库不存在或当前筛选无结果。</td></tr>';
         statusEl.textContent = `第 ${page} 页，共 0 条`;
         clearDetail();
         return;
       }
-      rowsEl.innerHTML = items.map(item => {
+      
+      const rowsHtml = validItems.map(item => {
         const active = selectedId === item.id ? 'active' : '';
         return `
           <tr class="${active}" data-id="${escapeHtml(item.id)}">
@@ -291,11 +574,52 @@
           </tr>
         `;
       }).join('');
-      rowsEl.querySelectorAll('tr').forEach(row => {
+      
+      rowsEl.innerHTML = rowsHtml;
+      
+      // 只为有效行添加点击事件
+      rowsEl.querySelectorAll('tr[data-id]').forEach(row => {
         row.addEventListener('click', () => loadDetail(Number(row.dataset.id)));
       });
-      statusEl.textContent = `第 ${page} 页，当前 ${items.length} 条，总计 ${total} 条`;
-      if (!selectedId || !items.some(item => item.id === selectedId)) loadDetail(items[0].id);
+      
+      // 更新状态显示 - 使用过滤后的数据
+      const currentPageAudioCount = validItems.filter(item => item.skill_id === 'audio-detector').length;
+      let statusText = `第 ${page} 页，当前 ${validItems.length} 条，总计 ${totalCount} 条`;
+      
+      if (currentPageAudioCount > 0) {
+        statusText += ` | 本页包含 ${currentPageAudioCount} 条音频告警`;
+      }
+      
+      statusEl.textContent = statusText;
+      
+      // 自动选中第一项
+      if (!selectedId || !validItems.some(item => item.id === selectedId)) {
+        if (validItems.length > 0) {
+          loadDetail(validItems[0].id);
+        }
+      }
+    }
+
+    function renderRows() {
+      // 再次过滤，确保只渲染有效数据
+      const validItems = items.filter(item => {
+        if (!item || !item.id) return false;
+        // 必须有时间戳
+        if (!item.created_at) return false;
+        // 必须有摄像头信息（非空字符串）
+        const hasCamera = (item.camera_id && item.camera_id.trim()) || (item.camera_label && item.camera_label.trim());
+        if (!hasCamera) return false;
+        // 必须有类别信息（非空字符串）
+        const hasCategory = (item.category && item.category.trim()) || (item.category_cn && item.category_cn.trim()) || 
+                           (item.alert_type && item.alert_type.trim()) || (item.title && item.title.trim());
+        if (!hasCategory) return false;
+        return true;
+      });
+      
+      // 更新total为实际显示的数量
+      total = validItems.length;
+      
+      renderRowsDirect(validItems, total);
     }
 
     function clearDetail() {

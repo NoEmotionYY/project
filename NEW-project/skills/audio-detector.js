@@ -3,9 +3,12 @@
  * 依赖 server.js 通过 RTCAudioSink 写入 context.audio / context.audioMetrics。
  * 不处理原始音频流，只根据 dBFS / 峰值等轻量指标做响声告警治理。
  */
-const name = 'audio-detector';
-const label = '音频异常检测';
-const description = '检测 WebRTC 麦克风音轨中的异常响声，支持阈值、连续确认和冷却。';
+const skillMeta = {
+  name: 'audio-detector',
+  label: '音频异常检测',
+  description: '检测 WebRTC 麦克风音轨中的异常响声，支持阈值、连续确认和冷却。'
+};
+const { name, label, description } = skillMeta;
 
 const state = new Map();
 
@@ -204,8 +207,8 @@ async function analyze(_base64Image, context = {}) {
 }
 
 module.exports = {
-  name,
-  label,
-  description,
+  name: 'audio-detector',
+  label: '音频异常检测',
+  description: '检测 WebRTC 麦克风音轨中的异常响声，支持阈值、连续确认和冷却。',
   analyze
 };

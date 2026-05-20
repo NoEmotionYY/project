@@ -1,6 +1,7 @@
 {
   "qwen-vl": false,
-  "yolo-safety": true,
+  "yolo-safety": false,
   "audio-detector": false,
-  "____": false
+  "____": false,
+  "wechat-push": false
 }

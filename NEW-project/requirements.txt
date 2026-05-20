@@ -5,5 +5,7 @@ numpy
 opencv-python
 Pillow
 psutil
+python-dateutil
 requests
+sounddevice
 ultralytics

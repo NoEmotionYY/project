@@ -55,4 +55,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSkillList: (callback) => {
     ipcRenderer.on('skill-list', (_event, value) => callback(value));
   },
+
+  // 打开文件夹（用于录制文件）
+  openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
 });

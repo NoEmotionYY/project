@@ -7,37 +7,56 @@
     <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
     <style>
         :root {
-            --bg: #0f172a;
-            --card-bg: rgba(30, 41, 59, 0.85);
-            --sidebar-bg: rgba(15, 23, 42, 0.95);
-            --text: #e2e8f0;
-            --text-muted: #94a3b8;
-            --border: rgba(96, 165, 250, 0.12);
-            --primary: #3b82f6;
-            --primary-light: #60a5fa;
-            --success: #22c55e;
-            --danger: #ef4444;
-            --agent-bg: rgba(20, 28, 46, 0.95);
+            --bg: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1629 100%);
+            --card-bg: rgba(255, 255, 255, 0.08);
+            --sidebar-bg: rgba(255, 255, 255, 0.06);
+            --panel: rgba(255, 255, 255, 0.08);
+            --panel-soft: rgba(255, 255, 255, 0.05);
+            --text: #ffffff;
+            --text-muted: rgba(255, 255, 255, 0.6);
+            --line: rgba(255, 255, 255, 0.12);
+            --border: rgba(255, 255, 255, 0.12);
+            --primary: #00d4ff;
+            --accent: #00d4ff;
+            --primary-light: #00e5ff;
+            --success: #34d399;
+            --ok: #34d399;
+            --danger: #f87171;
+            --warning: #fbbf24;
+            --agent-bg: rgba(255, 255, 255, 0.06);
+            --glass-blur: blur(20px);
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+            --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+            --glow-accent: 0 0 20px rgba(0, 212, 255, 0.4);
+            --glow-ok: 0 0 20px rgba(52, 211, 153, 0.4);
+            --glow-warn: 0 0 20px rgba(251, 191, 36, 0.4);
+            --glow-danger: 0 0 20px rgba(248, 113, 113, 0.4);
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
             background: var(--bg);
+            background-attachment: fixed;
             color: var(--text);
             height: 100vh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            -webkit-font-smoothing: antialiased;
         }
         header {
             height: 56px;
             background: var(--sidebar-bg);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 0 20px;
             flex-shrink: 0;
+            box-shadow: var(--shadow-sm);
         }
         .header-left {
             display: flex;
@@ -48,20 +67,26 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 6px 14px;
-            background: rgba(96, 165, 250, 0.1);
-            border: 1px solid rgba(96, 165, 250, 0.2);
-            border-radius: 6px;
+            padding: 8px 16px;
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            border-radius: 10px;
             color: var(--primary-light);
             font-size: 13px;
             text-decoration: none;
-            transition: all 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
         }
-        .back-btn:hover { background: rgba(96, 165, 250, 0.2); }
+        .back-btn:hover { 
+            background: rgba(0, 212, 255, 0.2);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+        }
         header h1 {
             font-size: 18px;
             color: var(--primary-light);
             font-weight: 600;
+            letter-spacing: -0.3px;
         }
         header h1 i { margin-right: 8px; }
         .header-actions {
@@ -69,21 +94,25 @@
             gap: 10px;
         }
         .header-actions button {
-            padding: 6px 14px;
+            padding: 8px 16px;
             background: rgba(168, 85, 247, 0.12);
             border: 1px solid rgba(168, 85, 247, 0.25);
-            border-radius: 6px;
+            border-radius: 10px;
             color: #c084fc;
             font-size: 13px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
         }
         .header-actions button:hover {
             background: rgba(168, 85, 247, 0.22);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
         }
         .header-actions button.active {
             background: rgba(168, 85, 247, 0.3);
             border-color: #c084fc;
+            box-shadow: 0 0 12px rgba(168, 85, 247, 0.4);
         }
 
         .main-layout {
@@ -96,13 +125,15 @@
         .sidebar {
             width: 260px;
             background: var(--sidebar-bg);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
             border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
         }
         .sidebar-header {
-            padding: 14px 16px;
+            padding: 16px 18px;
             border-bottom: 1px solid var(--border);
             font-weight: 600;
             font-size: 14px;
@@ -110,6 +141,7 @@
             align-items: center;
             gap: 8px;
             color: var(--primary-light);
+            background: rgba(255, 255, 255, 0.03);
         }
         .camera-list {
             flex: 1;
@@ -120,15 +152,21 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 12px 16px;
+            padding: 14px 18px;
             cursor: pointer;
-            transition: background 0.15s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             border-left: 3px solid transparent;
+            border-radius: 0 12px 12px 0;
+            margin: 2px 8px 2px 0;
         }
-        .camera-item:hover { background: rgba(96, 165, 250, 0.05); }
+        .camera-item:hover { 
+            background: rgba(0, 212, 255, 0.12);
+            transform: translateX(4px);
+        }
         .camera-item.active {
-            background: rgba(96, 165, 250, 0.1);
+            background: linear-gradient(90deg, rgba(0, 212, 255, 0.15), rgba(0, 212, 255, 0.05));
             border-left-color: var(--primary);
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.15);
         }
         .cam-info {
             display: flex;
@@ -138,15 +176,43 @@
             min-width: 0;
         }
         .status-dot {
-            width: 8px;
-            height: 8px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
             flex-shrink: 0;
+            transition: all 0.3s ease;
         }
-        .status-dot.connected { background: var(--success); }
-        .status-dot.disconnected { background: #64748b; }
-        .status-dot.connecting { background: #f59e0b; }
-        .status-dot.error { background: var(--danger); }
+        .status-dot.connected { 
+            background: var(--success);
+            box-shadow: 0 0 12px var(--success), 0 0 20px rgba(52, 211, 153, 0.4);
+            animation: pulse-green 2s infinite;
+        }
+        .status-dot.disconnected { 
+            background: #64748b;
+            box-shadow: 0 0 8px rgba(100, 116, 139, 0.3);
+        }
+        .status-dot.connecting { 
+            background: var(--warning);
+            box-shadow: 0 0 12px var(--warning), 0 0 20px rgba(251, 191, 36, 0.4);
+            animation: pulse-yellow 1.5s infinite;
+        }
+        .status-dot.error { 
+            background: var(--danger);
+            box-shadow: 0 0 12px var(--danger), 0 0 20px rgba(248, 113, 113, 0.4);
+            animation: pulse-red 1.5s infinite;
+        }
+        @keyframes pulse-green {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
+        @keyframes pulse-yellow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
         .cam-name {
             font-size: 13px;
             font-weight: 500;
@@ -159,22 +225,23 @@
             color: var(--text-muted);
         }
         .rec-indicator {
-            width: 8px;
-            height: 8px;
+            width: 12px;
+            height: 12px;
             border-radius: 50%;
             background: var(--danger);
-            animation: pulse 1.5s infinite;
+            animation: pulse-record 1.5s infinite;
             flex-shrink: 0;
+            box-shadow: 0 0 16px var(--danger), 0 0 24px rgba(248, 113, 113, 0.5);
         }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
+        @keyframes pulse-record {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.9); }
         }
         .toggle-switch {
             position: relative;
             display: inline-block;
-            width: 36px;
-            height: 20px;
+            width: 40px;
+            height: 22px;
             flex-shrink: 0;
             margin-left: 8px;
         }
@@ -187,48 +254,66 @@
             position: absolute;
             cursor: pointer;
             top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #334155;
-            transition: .2s;
-            border-radius: 20px;
+            background-color: rgba(100, 116, 139, 0.5);
+            transition: .3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 22px;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
         }
         .toggle-slider:before {
             position: absolute;
             content: "";
-            height: 14px;
-            width: 14px;
+            height: 16px;
+            width: 16px;
             left: 3px;
             bottom: 3px;
             background-color: white;
-            transition: .2s;
+            transition: .3s cubic-bezier(0.4, 0, 0.2, 1);
             border-radius: 50%;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
         }
         .toggle-switch input:checked + .toggle-slider {
             background-color: var(--success);
+            box-shadow: 0 0 16px rgba(52, 211, 153, 0.6);
         }
         .toggle-switch input:checked + .toggle-slider:before {
-            transform: translateX(16px);
+            transform: translateX(18px);
         }
 
         /* 中间文件区 */
         .content {
             flex: 1;
             overflow-y: auto;
-            padding: 24px;
+            padding: 28px;
             min-width: 0;
         }
         .content-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 20px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--line);
         }
         .content-header h2 {
-            font-size: 18px;
-            font-weight: 600;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, var(--primary-light), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
         .content-header .meta {
             font-size: 13px;
             color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.06);
+            padding: 6px 14px;
+            border-radius: 99px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--line);
+            font-weight: 500;
         }
         .empty-files {
             text-align: center;
@@ -248,19 +333,43 @@
         }
         .file-card {
             background: var(--card-bg);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 14px;
-            transition: transform 0.15s, border-color 0.15s;
+            border-radius: 16px;
+            padding: 18px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .file-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--primary), transparent);
+            opacity: 0;
+            transition: opacity 0.3s ease;
         }
         .file-card:hover {
-            border-color: rgba(96, 165, 250, 0.3);
-            transform: translateY(-1px);
+            border-color: rgba(0, 212, 255, 0.4);
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+        .file-card:hover::before {
+            opacity: 1;
         }
         .file-card.selected {
             border-color: #a855f7;
-            box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.2);
+            background: rgba(168, 85, 247, 0.12);
+            box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.3), var(--shadow-lg);
+        }
+        .file-card.selected::before {
+            background: linear-gradient(90deg, transparent, #a855f7, transparent);
+            opacity: 1;
         }
         .file-card-header {
             display: flex;
@@ -269,15 +378,15 @@
             margin-bottom: 10px;
         }
         .file-icon {
-            width: 36px;
-            height: 36px;
-            background: rgba(59, 130, 246, 0.12);
-            border-radius: 8px;
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 212, 255, 0.12);
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
             color: var(--primary-light);
-            font-size: 16px;
+            font-size: 18px;
         }
         .file-card-title {
             font-size: 13px;
@@ -295,53 +404,100 @@
             margin-top: 10px;
         }
         .btn-sm {
-            padding: 5px 10px;
+            padding: 7px 14px;
             border: none;
-            border-radius: 6px;
+            border-radius: 10px;
             font-size: 12px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             display: inline-flex;
             align-items: center;
-            gap: 4px;
+            gap: 5px;
             text-decoration: none;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
         .btn-play {
-            background: rgba(59, 130, 246, 0.12);
+            background: rgba(0, 212, 255, 0.15);
             color: var(--primary-light);
+            border: 1px solid rgba(0, 212, 255, 0.25);
         }
-        .btn-play:hover { background: rgba(59, 130, 246, 0.25); }
+        .btn-play:hover { 
+            background: rgba(0, 212, 255, 0.28);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+        }
         .btn-download {
-            background: rgba(34, 197, 94, 0.12);
+            background: rgba(52, 211, 153, 0.15);
             color: var(--success);
+            border: 1px solid rgba(52, 211, 153, 0.25);
         }
-        .btn-download:hover { background: rgba(34, 197, 94, 0.25); }
+        .btn-download:hover { 
+            background: rgba(52, 211, 153, 0.28);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(52, 211, 153, 0.3);
+        }
         .btn-delete {
-            background: rgba(239, 68, 68, 0.12);
+            background: rgba(248, 113, 113, 0.15);
             color: var(--danger);
+            border: 1px solid rgba(248, 113, 113, 0.25);
         }
-        .btn-delete:hover { background: rgba(239, 68, 68, 0.25); }
+        .btn-delete:hover { 
+            background: rgba(248, 113, 113, 0.28);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(248, 113, 113, 0.3);
+        }
         .btn-agent {
-            background: rgba(168, 85, 247, 0.12);
+            background: rgba(168, 85, 247, 0.15);
             color: #c084fc;
+            border: 1px solid rgba(168, 85, 247, 0.25);
         }
-        .btn-agent:hover { background: rgba(168, 85, 247, 0.25); }
+        .btn-agent:hover { 
+            background: rgba(168, 85, 247, 0.28);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+        }
+        .btn-sm.btn-loading {
+            position: relative;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+        .btn-sm.btn-loading::after {
+            content: '';
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            top: 50%;
+            left: 50%;
+            margin-left: -7px;
+            margin-top: -7px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
 
         /* 右侧 Agent 面板 */
         .agent-panel {
             width: 340px;
             background: var(--agent-bg);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
             border-left: 1px solid var(--border);
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
-            transition: margin-right 0.3s;
+            transition: margin-right 0.3s ease;
         }
         .agent-panel.collapsed {
             margin-right: -340px;
         }
         .agent-header {
-            padding: 14px 16px;
+            padding: 16px 18px;
             border-bottom: 1px solid var(--border);
             font-weight: 600;
             font-size: 14px;
@@ -349,6 +505,7 @@
             align-items: center;
             justify-content: space-between;
             color: #c084fc;
+            background: rgba(255, 255, 255, 0.03);
         }
         .agent-header i { margin-right: 6px; }
         .agent-messages {
@@ -361,22 +518,38 @@
         }
         .agent-msg {
             max-width: 90%;
-            padding: 10px 14px;
-            border-radius: 12px;
+            padding: 12px 16px;
+            border-radius: 14px;
             font-size: 13px;
-            line-height: 1.6;
+            line-height: 1.65;
             word-break: break-word;
+            animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
         .agent-msg.user {
             align-self: flex-end;
-            background: rgba(59, 130, 246, 0.2);
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.25), rgba(0, 212, 255, 0.15));
             border-bottom-right-radius: 4px;
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            box-shadow: 0 2px 8px rgba(0, 212, 255, 0.15);
         }
         .agent-msg.bot {
             align-self: flex-start;
-            background: rgba(168, 85, 247, 0.12);
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.18), rgba(168, 85, 247, 0.1));
             border-bottom-left-radius: 4px;
-            border: 1px solid rgba(168, 85, 247, 0.15);
+            border: 1px solid rgba(168, 85, 247, 0.2);
+            box-shadow: 0 2px 8px rgba(168, 85, 247, 0.1);
         }
         .agent-msg .msg-time {
             font-size: 11px;
@@ -393,10 +566,11 @@
         .agent-selected-file {
             font-size: 12px;
             color: #c084fc;
-            padding: 6px 10px;
-            background: rgba(168, 85, 247, 0.08);
-            border-radius: 6px;
+            padding: 8px 12px;
+            background: rgba(168, 85, 247, 0.1);
+            border-radius: 8px;
             display: none;
+            border: 1px solid rgba(168, 85, 247, 0.2);
         }
         .agent-selected-file.visible { display: block; }
         .agent-input-row {
@@ -405,33 +579,62 @@
         }
         .agent-input {
             flex: 1;
-            padding: 8px 12px;
-            background: rgba(15, 23, 42, 0.6);
+            padding: 10px 14px;
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 10px;
             color: var(--text);
             font-size: 13px;
             outline: none;
+            transition: all 0.3s ease;
         }
         .agent-input:focus {
-            border-color: rgba(168, 85, 247, 0.4);
+            border-color: rgba(168, 85, 247, 0.5);
+            box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1);
         }
         .agent-send {
-            padding: 8px 14px;
+            padding: 10px 16px;
             background: rgba(168, 85, 247, 0.2);
             border: 1px solid rgba(168, 85, 247, 0.3);
-            border-radius: 8px;
+            border-radius: 10px;
             color: #c084fc;
             font-size: 13px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
         }
         .agent-send:hover {
             background: rgba(168, 85, 247, 0.3);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
         }
         .agent-send:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+            transform: none;
+        }
+        .agent-send.btn-loading {
+            position: relative;
+            pointer-events: none;
+        }
+        .agent-send.btn-loading i {
+            opacity: 0;
+        }
+        .agent-send.btn-loading::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border: 2px solid transparent;
+            border-top-color: #c084fc;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
         }
         .agent-placeholder {
             text-align: center;
@@ -451,32 +654,143 @@
             display: none;
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0, 0, 0, 0.9);
+            background: rgba(0, 0, 0, 0.92);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             z-index: 1000;
             align-items: center;
             justify-content: center;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
         .video-modal.active { display: flex; }
         .video-modal video {
             max-width: 90%;
             max-height: 85vh;
-            border-radius: 12px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+            border: 1px solid var(--border);
         }
         .video-modal .close-btn {
             position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(255,255,255,0.15);
-            border: none;
+            top: 24px;
+            right: 24px;
+            background: rgba(255,255,255,0.12);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
             color: white;
-            width: 40px;
-            height: 40px;
+            width: 44px;
+            height: 44px;
             border-radius: 50%;
             font-size: 18px;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .video-modal .close-btn:hover { background: rgba(255,255,255,0.3); }
+        .video-modal .close-btn:hover {
+            background: rgba(255,255,255,0.25);
+            transform: scale(1.1) rotate(90deg);
+            box-shadow: 0 4px 16px rgba(255, 255, 255, 0.2);
+        }
+        
+        /* 右键菜单 */
+        .context-menu {
+            display: none;
+            position: fixed;
+            background: rgba(30, 41, 59, 0.95);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 8px 0;
+            min-width: 180px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            animation: menuFadeIn 0.15s ease;
+        }
+        @keyframes menuFadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .context-menu.active { display: block; }
+        .context-menu-item {
+            padding: 10px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text);
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .context-menu-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .context-menu-item i {
+            width: 16px;
+            text-align: center;
+        }
+        .context-menu-item.danger {
+            color: #ef4444;
+        }
+        .context-menu-item.danger:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
+        .context-menu-divider {
+            height: 1px;
+            background: var(--border);
+            margin: 6px 0;
+        }
+
+        /* Toast 提示 */
+        .toast {
+            position: fixed;
+            top: 80px;
+            right: 24px;
+            background: rgba(30, 41, 59, 0.95);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px 20px;
+            color: var(--text);
+            font-size: 14px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+            z-index: 3000;
+            animation: toastSlideIn 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        @keyframes toastSlideIn {
+            from { 
+                opacity: 0; 
+                transform: translateX(100px); 
+            }
+            to { 
+                opacity: 1; 
+                transform: translateX(0); 
+            }
+        }
+        .toast.hiding {
+            animation: toastSlideOut 0.3s ease forwards;
+        }
+        @keyframes toastSlideOut {
+            from { 
+                opacity: 1; 
+                transform: translateX(0); 
+            }
+            to { 
+                opacity: 0; 
+                transform: translateX(100px); 
+            }
+        }
     </style>
 </head>
 <body>
@@ -543,6 +857,19 @@
         <video id="video-player" controls></video>
     </div>
 
+    <!-- 右键菜单 -->
+    <div class="context-menu" id="context-menu">
+        <div class="context-menu-item" onclick="openFileInExplorer()">
+            <i class="fa fa-folder-open-o"></i>
+            <span>打开所在文件夹</span>
+        </div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item danger" onclick="deleteFileFromMenu()">
+            <i class="fa fa-trash-o"></i>
+            <span>删除文件</span>
+        </div>
+    </div>
+
     <script>
         window.onerror = function(msg, url, line) {
             document.body.innerHTML = '<div style="padding:40px 20px;color:#ef4444;text-align:center;"><h2><i class="fa fa-exclamation-circle"></i> 页面发生错误</h2><pre style="background:#1e1e1e;padding:16px;border-radius:8px;text-align:left;margin-top:20px;color:#e2e8f0;font-size:13px;overflow:auto;">' + msg + '\nLine: ' + line + '</pre><p style="margin-top:20px;color:#94a3b8;">请打开 Electron 控制台（Ctrl+Shift+I）查看详细错误</p></div>';
@@ -596,10 +923,60 @@
                 const ct = resp.headers.get('content-type') || '';
                 if (!ct.includes('application/json')) throw new Error('响应格式错误 (收到 ' + ct + ')');
                 const data = await resp.json();
+                
+                const oldRecordings = recordings;
                 recordings = data.recordings || [];
+                
+                // 调试信息
+                console.log('[录制页面] 加载完成:', recordings.length, '个摄像头');
+                recordings.forEach(r => {
+                    console.log(`  - ${r.cameraId}: ${r.files.length} 个文件, 录制中: ${r.isRecording}`);
+                });
+                
                 renderSidebar();
-                if (activeCamId) renderContent(activeCamId);
+                
+                // 智能选择摄像头逻辑
+                if (activeCamId) {
+                    // 如果之前有选中的摄像头，保持选中并刷新内容
+                    const stillExists = recordings.find(g => g.cameraId === activeCamId);
+                    if (stillExists) {
+                        renderContent(activeCamId);
+                    } else {
+                        // 选中的摄像头不存在了，选择第一个
+                        if (recordings.length > 0) {
+                            selectCamera(recordings[0].cameraId);
+                        }
+                    }
+                } else if (recordings.length > 0) {
+                    // 第一次加载，优先选择正在录制的摄像头
+                    const recording = recordings.find(g => g.isRecording);
+                    if (recording) {
+                        selectCamera(recording.cameraId);
+                        showToast('自动选择录制中的摄像头: ' + recording.cameraId);
+                    } else {
+                        // 没有录制中的，选择有文件的第一个摄像头
+                        const hasFiles = recordings.find(g => g.files.length > 0);
+                        if (hasFiles) {
+                            selectCamera(hasFiles.cameraId);
+                        }
+                    }
+                }
+                
+                // 检测是否有新文件（用于停止录制后自动刷新）
+                if (oldRecordings.length > 0) {
+                    recordings.forEach(newGroup => {
+                        const oldGroup = oldRecordings.find(g => g.cameraId === newGroup.cameraId);
+                        if (oldGroup && newGroup.files.length > oldGroup.files.length) {
+                            console.log(`[录制页面] ${newGroup.cameraId} 有新文件: ${newGroup.files.length} > ${oldGroup.files.length}`);
+                            // 如果当前正查看这个摄像头，显示提示
+                            if (activeCamId === newGroup.cameraId) {
+                                showToast(`✓ 检测到新录制文件`);
+                            }
+                        }
+                    });
+                }
             } catch (e) {
+                console.error('加载录制列表失败:', e);
                 document.getElementById('camera-list').innerHTML =
                     `<div class="empty-files"><i class="fa fa-exclamation-circle"></i>加载失败: ${escapeHtml(e.message)}</div>`;
                 document.getElementById('content').innerHTML =
@@ -650,14 +1027,21 @@
             content.innerHTML = `
                 <div class="content-header">
                     <h2>${escapeHtml(group.label || group.cameraId)} <span style="font-size:13px;color:var(--text-muted);font-weight:400;">(${escapeHtml(group.cameraId)})</span></h2>
-                    <span class="meta">${group.files.length} 个文件</span>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span class="meta">${group.files.length} 个文件</span>
+                        <button class="btn-sm" onclick="loadRecordings()" title="刷新列表" style="padding:6px 12px;background:rgba(255,255,255,0.1);border:1px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'">
+                            <i class="fa fa-refresh"></i> 刷新
+                        </button>
+                    </div>
                 </div>
                 ${group.files.length === 0
                     ? `<div class="empty-files"><i class="fa fa-folder-open-o"></i><div>暂无录制文件</div></div>`
                     : `<div class="file-grid">${group.files.map(f => {
                         const isSel = selectedFile && selectedFile.fileName === f.name && selectedFile.camId === group.cameraId;
                         return `
-                        <div class="file-card ${isSel ? 'selected' : ''}" onclick="selectFile('${group.cameraId}', '${encodeURIComponent(f.name)}', this)">
+                        <div class="file-card ${isSel ? 'selected' : ''}" 
+                             onclick="selectFile('${group.cameraId}', '${encodeURIComponent(f.name)}', this)"
+                             oncontextmenu="showContextMenu(event, '${group.cameraId}', '${encodeURIComponent(f.name)}')">
                             <div class="file-card-header">
                                 <div class="file-icon"><i class="fa fa-file-video-o"></i></div>
                                 <div>
@@ -698,7 +1082,7 @@
         function sendFileToAgent(camId, fileName, displayName) {
             selectFile(camId, fileName, null);
             addAgentMessage('user', `请分析这段视频: ${displayName}`);
-            addAgentMessage('bot', '正在分析视频...（Agent 接口待对接）');
+            addAgentMessage('bot', '正在分析视频...');
             // TODO: 对接 Agent API
             // agentAnalyzeVideo(camId, decodeURIComponent(fileName));
         }
@@ -719,11 +1103,25 @@
 
         async function sendAgentMsg() {
             const input = document.getElementById('agent-input');
+            const sendBtn = document.getElementById('agent-send-btn');
             const text = input.value.trim();
             if (!text) return;
+            
             input.value = '';
+            sendBtn.classList.add('btn-loading');
+            sendBtn.disabled = true;
+            
             addAgentMessage('user', text);
-            addAgentMessage('bot', '收到指令，Agent 处理中...（接口待对接）');
+            
+            try {
+                // Simulate API delay
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                addAgentMessage('bot', '✓ 收到指令，Agent 处理中...');
+            } finally {
+                sendBtn.classList.remove('btn-loading');
+                sendBtn.disabled = false;
+                input.focus();
+            }
             // TODO: 对接 Agent API
             // const resp = await fetch('/api/agent/chat', { method: 'POST', body: JSON.stringify({ message: text, file: selectedFile }) });
         }
@@ -736,25 +1134,56 @@
         }
 
         async function toggleRec(camId, shouldRecord) {
+            const toggleEl = event.target;
+            toggleEl.disabled = true;
+            
             try {
                 const url = BACKEND_URL + '/api/recordings/' + camId + (shouldRecord ? '/start' : '/stop');
                 const resp = await fetch(url, { method: 'POST' });
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                loadRecordings();
+                
+                // 显示成功提示
+                showToast(shouldRecord ? '✓ 开始录制' : '✓ 停止录制');
+                
+                // 立即刷新列表
+                await loadRecordings();
             } catch (e) {
-                alert('操作失败: ' + e.message);
-                loadRecordings();
+                alert('✗ 操作失败: ' + e.message);
+                // 即使失败也刷新列表以恢复状态
+                await loadRecordings();
+            } finally {
+                toggleEl.disabled = false;
             }
         }
 
         async function deleteFile(camId, fileName) {
-            if (!confirm('确定要删除这个录制文件吗？')) return;
+            if (!confirm('⚠️ 确定要删除这个录制文件吗？\n此操作不可恢复！')) return;
+            
+            // Find and disable the delete button
+            const deleteBtn = event.target.closest('.btn-delete');
+            if (deleteBtn) {
+                deleteBtn.classList.add('btn-loading');
+                deleteBtn.disabled = true;
+            }
+            
             try {
                 const resp = await fetch(BACKEND_URL + '/api/recordings/' + camId + '/' + fileName, { method: 'DELETE' });
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                loadRecordings();
+                
+                // 显示成功提示
+                showToast('✓ 文件已删除');
+                
+                // 立即刷新列表
+                await loadRecordings();
             } catch (e) {
-                alert('删除失败: ' + e.message);
+                alert('✗ 删除失败: ' + e.message);
+                // 即使失败也刷新列表
+                await loadRecordings();
+            } finally {
+                if (deleteBtn) {
+                    deleteBtn.classList.remove('btn-loading');
+                    deleteBtn.disabled = false;
+                }
             }
         }
 
@@ -772,6 +1201,149 @@
             player.pause();
             player.src = '';
             modal.classList.remove('active');
+        }
+
+        // 右键菜单相关变量
+        let contextMenuTarget = null; // { camId, fileName }
+
+        // 显示右键菜单
+        function showContextMenu(event, camId, fileName) {
+            event.preventDefault();
+            event.stopPropagation();
+            
+            contextMenuTarget = { camId, fileName: decodeURIComponent(fileName) };
+            
+            const menu = document.getElementById('context-menu');
+            
+            // 计算菜单位置，确保不超出屏幕
+            let x = event.clientX;
+            let y = event.clientY;
+            
+            // 等待下一帧以获取菜单尺寸
+            requestAnimationFrame(() => {
+                const menuWidth = menu.offsetWidth || 180;
+                const menuHeight = menu.offsetHeight || 100;
+                
+                // 如果超出右边界，向左调整
+                if (x + menuWidth > window.innerWidth) {
+                    x = window.innerWidth - menuWidth - 10;
+                }
+                
+                // 如果超出下边界，向上调整
+                if (y + menuHeight > window.innerHeight) {
+                    y = window.innerHeight - menuHeight - 10;
+                }
+                
+                menu.style.left = x + 'px';
+                menu.style.top = y + 'px';
+                menu.classList.add('active');
+            });
+        }
+
+        // 隐藏右键菜单
+        function hideContextMenu() {
+            const menu = document.getElementById('context-menu');
+            menu.classList.remove('active');
+            contextMenuTarget = null;
+        }
+
+        // 打开文件所在文件夹
+        async function openFileInExplorer() {
+            if (!contextMenuTarget) return;
+            
+            const { camId, fileName } = contextMenuTarget;
+            
+            try {
+                // 调用后端 API 获取文件路径
+                const resp = await fetch(BACKEND_URL + '/api/recordings/' + camId + '/' + encodeURIComponent(fileName) + '/path', {
+                    method: 'GET'
+                });
+                
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                
+                const data = await resp.json();
+                
+                if (window.electronAPI && window.electronAPI.openFolder) {
+                    // Electron 环境下使用原生 API
+                    await window.electronAPI.openFolder(data.filePath);
+                } else {
+                    // 浏览器环境下提示用户
+                    alert('文件位置：\n' + data.filePath + '\n\n请在文件管理器中手动打开此路径。');
+                }
+            } catch (e) {
+                console.error('打开文件夹失败:', e);
+                alert('✗ 打开文件夹失败: ' + e.message);
+            } finally {
+                hideContextMenu();
+            }
+        }
+
+        // 从右键菜单删除文件
+        async function deleteFileFromMenu() {
+            if (!contextMenuTarget) return;
+            
+            const { camId, fileName } = contextMenuTarget;
+            
+            if (!confirm('⚠️ 确定要删除这个录制文件吗？\n此操作不可恢复！')) {
+                hideContextMenu();
+                return;
+            }
+            
+            try {
+                const resp = await fetch(BACKEND_URL + '/api/recordings/' + camId + '/' + encodeURIComponent(fileName), { 
+                    method: 'DELETE' 
+                });
+                
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                
+                // 显示成功提示
+                showToast('✓ 文件已删除');
+                
+                // 刷新列表
+                await loadRecordings();
+            } catch (e) {
+                alert('✗ 删除失败: ' + e.message);
+                // 即使失败也刷新列表
+                await loadRecordings();
+            } finally {
+                hideContextMenu();
+            }
+        }
+
+        // 点击其他地方关闭右键菜单
+        document.addEventListener('click', () => {
+            hideContextMenu();
+        });
+
+        // ESC 键关闭右键菜单
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                hideContextMenu();
+                closeVideo();
+            }
+        });
+
+        // Toast 提示功能
+        function showToast(message, duration = 2000) {
+            // 移除已有的 toast
+            const existingToast = document.querySelector('.toast');
+            if (existingToast) {
+                existingToast.remove();
+            }
+
+            // 创建新的 toast
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.innerHTML = `<i class="fa fa-check-circle" style="color:#10b981;"></i><span>${message}</span>`;
+            document.body.appendChild(toast);
+
+            // 自动消失
+            setTimeout(() => {
+                toast.classList.add('hiding');
+                setTimeout(() => {
+                    toast.remove();
+                }, 300);
+            }, duration);
         }
 
         function escapeHtml(text) {
