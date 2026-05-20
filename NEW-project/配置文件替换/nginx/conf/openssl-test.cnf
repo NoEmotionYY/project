@@ -1,0 +1,8 @@
+[req]
+distinguished_name = dn
+prompt = no
+x509_extensions = v3_req
+[dn]
+CN = localhost
+[v3_req]
+subjectAltName = DNS:localhost,IP:127.0.0.1
